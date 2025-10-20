@@ -254,6 +254,7 @@ wf.body(func(args) {
 	abundancePf := xsv.importFile(finalAbundancesTsv, "tsv", {
 		axes: abundanceAxes,
 		columns: newAbundanceColumns,
+		storageFormat: "Parquet",
 		partitionKeyLength: 1
 	}, { splitDataAndSpec: true })
 
@@ -282,7 +283,9 @@ wf.body(func(args) {
 
 	propertyPf := xsv.importFile(finalPropertiesTsv, "tsv", {
 		axes: propertyAxes,
-		columns: newPropertyColumns
+		columns: newPropertyColumns,
+		storageFormat: "Parquet",
+		partitionKeyLength: 0
 	}, { splitDataAndSpec: true })
 	
 
