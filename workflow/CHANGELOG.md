@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.redefine-clonotypes.workflow
 
+## 1.0.4
+
+### Patch Changes
+
+- 7eb1594: Support parquet format (update SDK)
+
 ## 1.0.3
 
 ### Patch Changes
