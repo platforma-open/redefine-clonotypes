@@ -53,19 +53,7 @@ export const model = BlockModel.create()
         },
         {
           axes: [{ anchor: 'main', idx: 1 }],
-          name: 'pl7.app/vdj/vGene',
-        },
-        {
-          axes: [{ anchor: 'main', idx: 1 }],
-          name: 'pl7.app/vdj/dGene',
-        },
-        {
-          axes: [{ anchor: 'main', idx: 1 }],
-          name: 'pl7.app/vdj/jGene',
-        },
-        {
-          axes: [{ anchor: 'main', idx: 1 }],
-          name: 'pl7.app/vdj/cGene',
+          name: 'pl7.app/vdj/geneHit',
         },
       ],
     );
