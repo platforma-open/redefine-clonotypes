@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.redefine-clonotypes.model
 
+## 1.0.3
+
+### Patch Changes
+
+- 7359f01: Fix definition options
+
 ## 1.0.2
 
 ### Patch Changes
