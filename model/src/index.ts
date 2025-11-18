@@ -88,6 +88,6 @@ export const model = BlockModel.create()
 
   .sections((_ctx) => [{ type: 'link', href: '/', label: 'Main' }])
 
-  .done();
+  .done(2);
 
 export type BlockOutputs = InferOutputsType<typeof model>;
