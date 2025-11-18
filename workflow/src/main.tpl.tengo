@@ -238,17 +238,46 @@ wf.body(func(args) {
 		newSpecUnnormalized := maps.clone(col.spec)
 		delete(newSpecUnnormalized, "axesSpec")
 
-		newAbundanceColumns = append(newAbundanceColumns, { column: header, spec: newSpecUnnormalized })
+		newAbundanceColumns = append(newAbundanceColumns, { 
+			column: header, 
+			id: header,
+			spec: newSpecUnnormalized 
+		})
 
 		newSpecNormalized := maps.clone(newSpecUnnormalized)
-		newSpecNormalized.annotations = maps.merge(newSpecNormalized.annotations, {
-			"pl7.app/abundance/normalized": "true"
-		})
+		unit := newSpecNormalized.annotations["pl7.app/abundance/unit"]
+		normalizedLabel := unit == "molecules" ? "UMI Fraction" : unit == "reads" ? "Read Fraction" : "Normalized Abundance"
+		
+		// Set normalized-specific spec name
+		normalizedSpecName := unit == "molecules" ? "pl7.app/vdj/uniqueMoleculeFraction" : unit == "reads" ? "pl7.app/vdj/readFraction" : newSpecNormalized.name + "Normalized"
+		newSpecNormalized.name = normalizedSpecName
+		
+		// Set normalized-specific annotations
+		normalizedAnnotations := {
+			"pl7.app/abundance/normalized": "true",
+			"pl7.app/label": normalizedLabel,
+			"pl7.app/min": "0",
+			"pl7.app/max": "1",
+			"pl7.app/format": ".2p"
+		}
+		
+		// Preserve table visibility if it exists, otherwise set to optional
+		if is_undefined(newSpecNormalized.annotations["pl7.app/table/visibility"]) {
+			normalizedAnnotations["pl7.app/table/visibility"] = "optional"
+		}
+		
+		newSpecNormalized.annotations = maps.merge(newSpecNormalized.annotations, normalizedAnnotations)
 		if (newSpecNormalized.annotations["pl7.app/isAnchor"] == "true") {
 			delete(newSpecNormalized.annotations, "pl7.app/isAnchor")
 		}
 		newSpecNormalized.valueType = "Double"
-		newAbundanceColumns = append(newAbundanceColumns, { column: "normalized_" + header, spec: newSpecNormalized })
+		
+		normalizedHeader := "normalized_" + header
+		newAbundanceColumns = append(newAbundanceColumns, { 
+			column: normalizedHeader, 
+			id: normalizedHeader,
+			spec: newSpecNormalized 
+		})
 	}
 
 	abundancePf := xsv.importFile(finalAbundancesTsv, "tsv", {
