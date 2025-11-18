@@ -1,5 +1,18 @@
 # @platforma-open/milaboratories.redefine-clonotypes
 
+## 1.1.0
+
+### Minor Changes
+
+- 92ae47a: fix normalized abundance columns and updating dependencies
+
+### Patch Changes
+
+- Updated dependencies [92ae47a]
+  - @platforma-open/milaboratories.redefine-clonotypes.workflow@1.1.0
+  - @platforma-open/milaboratories.redefine-clonotypes.model@1.1.0
+  - @platforma-open/milaboratories.redefine-clonotypes.ui@1.1.0
+
 ## 1.0.6
 
 ### Patch Changes
