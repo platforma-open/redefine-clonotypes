@@ -1,5 +1,15 @@
 # @platforma-open/milaboratories.redefine-clonotypes
 
+## 1.1.1
+
+### Patch Changes
+
+- c480a29: Migrate to new block template
+- Updated dependencies [c480a29]
+  - @platforma-open/milaboratories.redefine-clonotypes.workflow@1.1.1
+  - @platforma-open/milaboratories.redefine-clonotypes.model@1.1.1
+  - @platforma-open/milaboratories.redefine-clonotypes.ui@1.1.1
+
 ## 1.1.0
 
 ### Minor Changes

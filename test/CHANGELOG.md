@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.redefine-clonotypes.test
 
+## 1.1.1
+
+### Patch Changes
+
+- c480a29: Migrate to new block template
+
 ## 1.1.0
 
 ### Minor Changes
