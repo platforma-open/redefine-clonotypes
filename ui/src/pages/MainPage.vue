@@ -38,10 +38,7 @@ function setDataset(ref: PlRef | undefined) {
     <PlAlert v-if="!isValid" type="info">
       Please select a VDJ dataset and a new clonotype definition.
     </PlAlert>
-    <PlAlert v-else-if="app.model.outputs.isRunning" type="info">
-      Running...
-    </PlAlert>
-    <div v-else class="results">
+    <div v-else-if="isValid && !app.model.outputs.isRunning" class="results">
       <h3>Results</h3>
       <p>Number of clonotypes before: {{ app.model.outputs.stats?.nClonotypesBefore?.toLocaleString() ?? 'N/A' }}</p>
       <p>Number of clonotypes after: {{ app.model.outputs.stats?.nClonotypesAfter?.toLocaleString() ?? 'N/A' }}</p>
