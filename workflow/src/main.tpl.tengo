@@ -210,10 +210,20 @@ wf.body(func(args) {
 
 	// --- Construct specs ---
 	datasetSpec := columns.getSpec(args.anchorRef)
+	
+	// Use customBlockLabel if user edited it, otherwise use defaultBlockLabel
+	traceLabel := args.customBlockLabel
+	if traceLabel == "" {
+		traceLabel = args.defaultBlockLabel
+	}
+	if traceLabel == "" {
+		traceLabel = text.join(definitionLabels, "-")
+	}
+	
 	trace := pSpec.makeTrace(datasetSpec, {
 		type: "milaboratories.redefine-clonotypes",
 		importance: 30,
-		label: "Redefined Clonotypes: " + text.join(definitionLabels, "-")
+		label: traceLabel
 	})
 
 	newClonotypeKeySpec := maps.clone(clonotypeKeyAxisSpec)

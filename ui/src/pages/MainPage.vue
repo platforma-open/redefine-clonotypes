@@ -1,27 +1,47 @@
 <script setup lang="ts">
 import type { PlRef } from '@platforma-sdk/model';
-import { plRefsEqual } from '@platforma-sdk/model';
 import { PlAlert, PlBlockPage, PlDropdownMulti, PlDropdownRef } from '@platforma-sdk/ui-vue';
-import { computed } from 'vue';
+import { computed, watchEffect } from 'vue';
 import { useApp } from '../app';
 
 const app = useApp();
 
 const isValid = computed(() => app.model.args.anchorRef !== undefined && (app.model.args.clonotypeDefinition?.length ?? 0) > 0);
 
+// Auto-derive default label whenever clonotype definition changes
+watchEffect(() => {
+  const parts: string[] = [];
+
+  if (app.model.args.clonotypeDefinition?.length) {
+    // Get short labels from the definition columns
+    const labels = app.model.args.clonotypeDefinition
+      .map((colId) => {
+        const option = app.model.outputs.clonotypeDefinitionOptions
+          ?.find((o) => o.value === colId);
+        // Extract short label, remove unnecessary words
+        let label = option?.label || '';
+        label = label.replace('InFrame', '').replace('VDJRegion', 'VDJ').trim();
+        return label;
+      })
+      .filter(Boolean);
+
+    parts.push(labels.join('-'));
+  }
+
+  app.model.args.defaultBlockLabel = parts.filter(Boolean).join(' ');
+});
+
 function setDataset(ref: PlRef | undefined) {
   app.model.args.anchorRef = ref;
-  app.model.ui.title = 'Redefine Clonotypes - ' + (ref
-    ? app.model.outputs.datasetOptions?.find((o) =>
-      plRefsEqual(o.ref, ref),
-    )?.label
-    : '');
 }
 </script>
 
 <template>
-  <PlBlockPage>
-    <template #title>{{ app.model.ui.title }}</template>
+  <PlBlockPage
+    v-model:subtitle="app.model.args.customBlockLabel"
+    :subtitle-placeholder="app.model.args.defaultBlockLabel"
+    title="Redefine Clonotypes"
+  >
     <PlDropdownRef
       v-model="app.model.args.anchorRef"
       label="VDJ dataset"
