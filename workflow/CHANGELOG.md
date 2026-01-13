@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.redefine-clonotypes.workflow
 
+## 1.2.0
+
+### Minor Changes
+
+- 68f61a6: Show running state and support custom block labels
+
 ## 1.1.1
 
 ### Patch Changes

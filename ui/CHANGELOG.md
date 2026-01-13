@@ -1,5 +1,16 @@
 # @platforma-open/milaboratories.redefine-clonotypes.ui
 
+## 1.2.0
+
+### Minor Changes
+
+- 68f61a6: Show running state and support custom block labels
+
+### Patch Changes
+
+- Updated dependencies [68f61a6]
+  - @platforma-open/milaboratories.redefine-clonotypes.model@1.2.0
+
 ## 1.1.1
 
 ### Patch Changes
