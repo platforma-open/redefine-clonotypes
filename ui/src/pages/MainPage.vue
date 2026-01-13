@@ -20,7 +20,7 @@ watchEffect(() => {
           ?.find((o) => o.value === colId);
         // Extract short label, remove unnecessary words
         let label = option?.label || '';
-        label = label.replace('InFrame', '').replace('VDJRegion', 'VDJ').trim();
+        label = label.replace('InFrame', '').trim();
         return label;
       })
       .filter(Boolean);
