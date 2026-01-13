@@ -2,22 +2,18 @@ import type { InferOutputsType, PlRef, SUniversalPColumnId } from '@platforma-sd
 import { BlockModel } from '@platforma-sdk/model';
 
 export type BlockArgs = {
+  defaultBlockLabel: string;
+  customBlockLabel: string;
   anchorRef?: PlRef;
   clonotypeDefinition: SUniversalPColumnId[];
-};
-
-export type UiState = {
-  title: string;
 };
 
 export const model = BlockModel.create()
 
   .withArgs<BlockArgs>({
+    defaultBlockLabel: '',
+    customBlockLabel: '',
     clonotypeDefinition: [],
-  })
-
-  .withUiState<UiState>({
-    title: 'Redefine Clonotypes',
   })
 
   .argsValid((ctx) => ctx.args.anchorRef !== undefined && (ctx.args.clonotypeDefinition?.length ?? 0) > 0)
@@ -84,7 +80,9 @@ export const model = BlockModel.create()
   })
   .output('isRunning', (ctx) => ctx.outputs?.getIsReadyOrError() === false)
 
-  .title((ctx) => ctx.uiState.title)
+  .title(() => 'Redefine Clonotypes')
+
+  .subtitle((ctx) => ctx.args.customBlockLabel || ctx.args.defaultBlockLabel)
 
   .sections((_ctx) => [{ type: 'link', href: '/', label: 'Main' }])
 
