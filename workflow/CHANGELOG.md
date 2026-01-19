@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.redefine-clonotypes.workflow
 
+## 1.3.0
+
+### Minor Changes
+
+- 3e6721f: Ensure same results given same input
+
 ## 1.2.0
 
 ### Minor Changes
