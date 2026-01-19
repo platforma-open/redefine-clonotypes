@@ -10,6 +10,11 @@ maps := import("@platforma-sdk/workflow-tengo:maps")
 xsv := import("@platforma-sdk/workflow-tengo:pframes.xsv")
 canonical := import("@platforma-sdk/workflow-tengo:canonical")
 json := import("json")
+assets := import("@platforma-sdk/workflow-tengo:assets")
+render := import("@platforma-sdk/workflow-tengo:render")
+
+anonymizationTpl := assets.importTemplate(":anonymization")
+deanonimizationTpl := assets.importTemplate(":deanonimization")
 
 // --- Clonotype Label Generation (copied from MiXCR Clonotyping) ---
 addClonotypeLabelColumnsPt := func(df, clonotypeKeyCol, clonotypeLabelCol) {
@@ -96,6 +101,18 @@ wf.body(func(args) {
 	sampleIdAxisSpec := mainAbundanceCol.spec.axesSpec[0]
 	clonotypeKeyAxisSpec := mainAbundanceCol.spec.axesSpec[1]
 
+	// Anonymize sampleId axis (index 0)
+	dataToAnonymize := {}
+	for i, col in abundanceCols {
+		dataToAnonymize["abundance_" + i] = col.data
+	}
+
+	anonymizationResult := render.create(anonymizationTpl, {
+		data: dataToAnonymize,
+		pKeyIndices: [0]
+	})
+	mappingRef := anonymizationResult.output("mapping")
+
 	// --- Build the initial TSV for the pt workflow ---
 	abundanceTsvBuilder := pframes.tsvFileBuilder()
 	abundanceTsvBuilder.setAxisHeader(sampleIdAxisSpec, "sampleId")
@@ -106,8 +123,10 @@ wf.body(func(args) {
 	abundanceHeaders := {}
 	for i, col in abundanceCols {
 		header := "abundance_" + i
-		abundanceHeaders[header] = col
-		abundanceTsvBuilder.add(col, { header: header })
+		anonymizedData := anonymizationResult.resolveOutput(["anonymizedData", "abundance_" + i])
+		anonymizedCol := { spec: col.spec, data: anonymizedData }
+		abundanceHeaders[header] = anonymizedCol
+		abundanceTsvBuilder.add(anonymizedCol, { header: header })
 	}
 	
 	definitionHeaders := []
@@ -185,27 +204,36 @@ wf.body(func(args) {
 
 	// 5. Get representative properties
 	
-	// label clonotype key
-	
 	df_properties := df_abundances.join(ptWf.frame(propertiesTsv, {xsvType: "tsv"}), {on: "clonotypeKey", how: "left"})
-	df_properties = addClonotypeLabelColumnsPt(df_properties, "newClonotypeKey", "clonotypeLabel")
 
-	aggExpressions := [
-		pt.col("clonotypeLabel").maxBy(pt.col(mainAbundanceHeader)).alias("clonotypeLabel")
-	]
+	aggExpressions := []
 	for h, _ in propertyHeaders {
 		aggExpressions = append(aggExpressions,
 			pt.col(h).maxBy(pt.col(mainAbundanceHeader)).alias(h)
 		)
 	}
 	aggregatedDf := df_properties.groupBy("newClonotypeKey").agg(aggExpressions...)
+
+	// label clonotype key deterministically on unique keys
+	aggregatedDf = addClonotypeLabelColumnsPt(aggregatedDf, "newClonotypeKey", "clonotypeLabel")
+	
 	aggregatedDf.save("properties.tsv")
 	
 	// --- Run and process ---
 	ptResult := ptWf.run()
-	finalAbundancesTsv := ptResult.getFile("abundances.tsv")
+	finalAbundancesTsvRaw := ptResult.getFile("abundances.tsv")
 	finalPropertiesTsv := ptResult.getFile("properties.tsv")
 	statsTsvContent := ptResult.getFileContent("stats.tsv")
+
+	// Deanonymize abundances
+	abundancesDeanonimization := render.createEphemeral(
+		deanonimizationTpl,
+		{
+			mapping: mappingRef,
+			clusteringResult: finalAbundancesTsvRaw
+		}
+	)
+	finalAbundancesTsv := abundancesDeanonimization.output("deanonimizedTsv")
 
 
 	// --- Construct specs ---
