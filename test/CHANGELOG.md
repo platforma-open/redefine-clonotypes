@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.redefine-clonotypes.test
 
+## 1.1.2
+
+### Patch Changes
+
+- f581ff4: Updated SDK
+
 ## 1.1.1
 
 ### Patch Changes

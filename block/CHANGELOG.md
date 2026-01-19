@@ -1,5 +1,15 @@
 # @platforma-open/milaboratories.redefine-clonotypes
 
+## 1.1.5
+
+### Patch Changes
+
+- f581ff4: Updated SDK
+- Updated dependencies [f581ff4]
+  - @platforma-open/milaboratories.redefine-clonotypes.model@1.2.2
+  - @platforma-open/milaboratories.redefine-clonotypes.ui@1.2.2
+  - @platforma-open/milaboratories.redefine-clonotypes.workflow@1.3.1
+
 ## 1.1.4
 
 ### Patch Changes
