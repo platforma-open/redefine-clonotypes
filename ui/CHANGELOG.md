@@ -1,5 +1,13 @@
 # @platforma-open/milaboratories.redefine-clonotypes.ui
 
+## 1.2.1
+
+### Patch Changes
+
+- b51b375: Left panel subtitle added by default
+- Updated dependencies [b51b375]
+  - @platforma-open/milaboratories.redefine-clonotypes.model@1.2.1
+
 ## 1.2.0
 
 ### Minor Changes

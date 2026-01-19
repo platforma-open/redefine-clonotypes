@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.redefine-clonotypes.model
 
+## 1.2.1
+
+### Patch Changes
+
+- b51b375: Left panel subtitle added by default
+
 ## 1.2.0
 
 ### Minor Changes
