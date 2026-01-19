@@ -22,17 +22,17 @@ catalogs:
       specifier: 1.2.0
       version: 1.2.0
     '@platforma-sdk/model':
-      specifier: 1.51.5
-      version: 1.51.5
+      specifier: 1.51.6
+      version: 1.51.6
     '@platforma-sdk/tengo-builder':
       specifier: 2.4.8
       version: 2.4.8
     '@platforma-sdk/test':
-      specifier: 1.51.5
-      version: 1.51.5
+      specifier: 1.51.6
+      version: 1.51.6
     '@platforma-sdk/ui-vue':
-      specifier: 1.51.5
-      version: 1.51.5
+      specifier: 1.51.6
+      version: 1.51.6
     '@platforma-sdk/workflow-tengo':
       specifier: 5.8.0
       version: 5.8.0
@@ -82,7 +82,7 @@ importers:
         version: link:../workflow
       '@platforma-sdk/model':
         specifier: 'catalog:'
-        version: 1.51.5
+        version: 1.51.6
     devDependencies:
       '@platforma-sdk/block-tools':
         specifier: 'catalog:'
@@ -92,7 +92,7 @@ importers:
     dependencies:
       '@platforma-sdk/model':
         specifier: 'catalog:'
-        version: 1.51.5
+        version: 1.51.6
     devDependencies:
       '@milaboratories/ts-builder':
         specifier: 'catalog:'
@@ -133,7 +133,7 @@ importers:
         version: 1.2.0(@eslint/js@9.34.0)(@stylistic/eslint-plugin@2.13.0(eslint@9.34.0)(typescript@5.6.3))(eslint-plugin-n@17.21.3(eslint@9.34.0)(typescript@5.6.3))(eslint-plugin-vue@9.33.0(eslint@9.34.0))(eslint@9.34.0)(globals@15.15.0)(typescript-eslint@8.41.0(eslint@9.34.0)(typescript@5.6.3))(typescript@5.6.3)
       '@platforma-sdk/test':
         specifier: 'catalog:'
-        version: 1.51.5(@eslint/js@9.34.0)(@stylistic/eslint-plugin@2.13.0(eslint@9.34.0)(typescript@5.6.3))(@types/node@24.5.2)(eslint-plugin-n@17.21.3(eslint@9.34.0)(typescript@5.6.3))(eslint-plugin-vue@9.33.0(eslint@9.34.0))(globals@15.15.0)(typescript-eslint@8.41.0(eslint@9.34.0)(typescript@5.6.3))(typescript@5.6.3)(yaml@2.8.1)
+        version: 1.51.6(@eslint/js@9.34.0)(@stylistic/eslint-plugin@2.13.0(eslint@9.34.0)(typescript@5.6.3))(@types/node@24.5.2)(eslint-plugin-n@17.21.3(eslint@9.34.0)(typescript@5.6.3))(eslint-plugin-vue@9.33.0(eslint@9.34.0))(globals@15.15.0)(typescript-eslint@8.41.0(eslint@9.34.0)(typescript@5.6.3))(typescript@5.6.3)(yaml@2.8.1)
       eslint:
         specifier: 'catalog:'
         version: 9.34.0
@@ -151,10 +151,10 @@ importers:
         version: link:../model
       '@platforma-sdk/model':
         specifier: 'catalog:'
-        version: 1.51.5
+        version: 1.51.6
       '@platforma-sdk/ui-vue':
         specifier: 'catalog:'
-        version: 1.51.5(sortablejs@1.15.6)(typescript@5.6.3)
+        version: 1.51.6(sortablejs@1.15.6)(typescript@5.6.3)
       vue:
         specifier: 'catalog:'
         version: 3.5.26(typescript@5.6.3)
@@ -972,8 +972,8 @@ packages:
     resolution: {integrity: sha512-gsrH9uXQZ6eXM3E3fJZWIS5E5UMEQyohtyjzVXG69aQoecTctC88XUxBv0CgNoA+IAuiB2hE+whZmWU7ifq8wA==}
     engines: {node: '>=22'}
 
-  '@milaboratories/pf-driver@1.0.21':
-    resolution: {integrity: sha512-8sCb1IUyiWPnNjZ4WL+zlvj+hl6EM3fDWIYLv6NI4fsRaKCajLUosCQMcpGEagBd5pu65WtGGyd2zvjOkyA0/g==}
+  '@milaboratories/pf-driver@1.0.22':
+    resolution: {integrity: sha512-EaeuNvY0+BGg806WFZ4BvZ6WNf9aChxZY5xPBQ+DrJRytRcvF5PrmE7LLnO49uhdCjWRUbM8OOzpGQ+zxF/jjA==}
     engines: {node: '>=22.19.0'}
 
   '@milaboratories/pframes-rs-node@1.0.109':
@@ -1007,8 +1007,8 @@ packages:
   '@milaboratories/pl-http@1.2.0':
     resolution: {integrity: sha512-5iRxug4TjE88+XoMU5LVcXe1PEmXYfZI3WxJGrayzYQFM/9GiKuwcUsQ0kDlFmw+s6UlEAzgC9+MsJFKvU7C5Q==}
 
-  '@milaboratories/pl-middle-layer@1.45.3':
-    resolution: {integrity: sha512-DQjb7fhMcxMMesRmRBrfqt7DBUFo0HTf0tMdof9AZj6yG3LgTRBfXqUiGInwPQJLqYPbOiDPhjmQml6FfvXmmw==}
+  '@milaboratories/pl-middle-layer@1.45.4':
+    resolution: {integrity: sha512-DpAPBkND7cWZRoMPfOMSScLO/ALWJ5BJ4QwGOhdXmIxpx/g/f3A2yw/+YOOLGe7+sE/Q0ZLvO9MQgCBNP9bEVw==}
     engines: {node: '>=22.19.0'}
 
   '@milaboratories/pl-model-backend@1.1.37':
@@ -1058,8 +1058,8 @@ packages:
     resolution: {integrity: sha512-Inpyk9sYn1e+59KwgAQW9uFBIR6hmMozDgTfOmz7sx38a2ZftBkYQtSCHwzztbV5tg8covugxbFEbpDKfDDF6A==}
     engines: {node: '>=22.19.0'}
 
-  '@milaboratories/uikit@2.10.1':
-    resolution: {integrity: sha512-a+REp08ngYd4PP4EL6X0lpC4MzzErENEYEkan5E/OvWh5pId2fzs6YTBhj0rBuraNmc436x2a3rDMaj/mgphSw==}
+  '@milaboratories/uikit@2.10.2':
+    resolution: {integrity: sha512-q2i1TbqCCbpkNgVAJTOPTaz1W66vPBKCbIdX4u1OYe754M6AS9i2tuJL6wx3RhF1PdZvmFXTwfKTqgJCt87rNA==}
 
   '@mstssk/cleandir@2.0.0':
     resolution: {integrity: sha512-CidYeaV4VQLIMbZlYqs0SJaZe/DyI0E4nsbFmPtCa2koKzMjZj/BThTCb+bvzcGhzp2A4Js1c4jDg6lqaqapyQ==}
@@ -1156,19 +1156,19 @@ packages:
       typescript: ~5.6.3
       typescript-eslint: ^8.17.0
 
-  '@platforma-sdk/model@1.51.5':
-    resolution: {integrity: sha512-uDUsTZpEK1yX3NHjosfd+Zz/kBlSt0E3AUxXqtxdvDAHvnHuQA3ZUmebmRAmTC+wdng2gsdLJ0faa+rl5BiUdA==}
+  '@platforma-sdk/model@1.51.6':
+    resolution: {integrity: sha512-UgFbC7gPtH4qMwZ0opbM7Tcs8mCMlbjHzJsqs1wD2gxc22l4QvAQOHiIZh2i8dmXny8ny+TwQ/6L8nPaRHqk5g==}
 
   '@platforma-sdk/tengo-builder@2.4.8':
     resolution: {integrity: sha512-K5VBl74Rmk0X92onFJ4KoHCZiNozYLAm9kHYkUZ2DcVXpyAgjI5lBgkmrDI71NefOlTaJfwd5zC545InxkKrnQ==}
     engines: {node: '>=22'}
     hasBin: true
 
-  '@platforma-sdk/test@1.51.5':
-    resolution: {integrity: sha512-p1WGJCpbv2sROSZJC8f1uL7BlcmAXJQK37WDVdWEY2a+Jna8i8bQZGCXiFXPoz+KjXf9cycxNizFM+Q4ju8Dbw==}
+  '@platforma-sdk/test@1.51.6':
+    resolution: {integrity: sha512-JwmNsQIZVuoM6KpcSutJ/oyxQUg9buYglJ0JhfYatiuRE1pWld3syDtB7CX6LnyfI0IyH7zK7hAeXDQldlGTSA==}
 
-  '@platforma-sdk/ui-vue@1.51.5':
-    resolution: {integrity: sha512-lwvGXZVGeYIsCRI0WiZFgaIKfRdzcU6KE10zon/+HQzLYhK3qkgggzeBtELvwBH8NZa/SL8WRrM56akzgBJs0w==}
+  '@platforma-sdk/ui-vue@1.51.6':
+    resolution: {integrity: sha512-9JE8hNMN7pwCXUilGNtWZijztLy8+aYOeEdRPBQDK73T90uIHbAasYaHlSr4U9tBKEHv5OpKuQcSpk3E7SHm6Q==}
 
   '@platforma-sdk/workflow-tengo@5.8.0':
     resolution: {integrity: sha512-OJnnjBXt1VcS1QNMC90PlkXrWJoKQ/Nl3/NeTqzTmq1j5gT3cZXoIQYu1c31KZXBungUo8TphymBcs+qDGpVgA==}
@@ -5330,12 +5330,12 @@ snapshots:
 
   '@milaboratories/helpers@1.13.0': {}
 
-  '@milaboratories/pf-driver@1.0.21':
+  '@milaboratories/pf-driver@1.0.22':
     dependencies:
       '@milaboratories/pframes-rs-node': 1.0.109
       '@milaboratories/pl-model-middle-layer': 1.9.1
       '@milaboratories/ts-helpers': 1.5.4
-      '@platforma-sdk/model': 1.51.5
+      '@platforma-sdk/model': 1.51.6
       es-toolkit: 1.40.0
       lru-cache: 11.2.2
     transitivePeerDependencies:
@@ -5452,10 +5452,10 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@milaboratories/pl-middle-layer@1.45.3':
+  '@milaboratories/pl-middle-layer@1.45.4':
     dependencies:
       '@milaboratories/computable': 2.8.0
-      '@milaboratories/pf-driver': 1.0.21
+      '@milaboratories/pf-driver': 1.0.22
       '@milaboratories/pframes-rs-node': 1.0.109
       '@milaboratories/pl-client': 2.16.20
       '@milaboratories/pl-config': 1.7.9
@@ -5470,7 +5470,7 @@ snapshots:
       '@milaboratories/resolve-helper': 1.1.1
       '@milaboratories/ts-helpers': 1.5.4
       '@platforma-sdk/block-tools': 2.6.29
-      '@platforma-sdk/model': 1.51.5
+      '@platforma-sdk/model': 1.51.6
       '@platforma-sdk/workflow-tengo': 5.8.0
       canonicalize: 2.1.0
       denque: 2.1.0
@@ -5593,10 +5593,10 @@ snapshots:
       canonicalize: 2.1.0
       denque: 2.1.0
 
-  '@milaboratories/uikit@2.10.1(typescript@5.6.3)':
+  '@milaboratories/uikit@2.10.2(typescript@5.6.3)':
     dependencies:
       '@milaboratories/helpers': 1.13.0
-      '@platforma-sdk/model': 1.51.5
+      '@platforma-sdk/model': 1.51.6
       '@types/d3-array': 3.2.1
       '@types/d3-axis': 3.0.6
       '@types/d3-scale': 4.0.9
@@ -5752,7 +5752,7 @@ snapshots:
       typescript: 5.6.3
       typescript-eslint: 8.41.0(eslint@9.34.0)(typescript@5.6.3)
 
-  '@platforma-sdk/model@1.51.5':
+  '@platforma-sdk/model@1.51.6':
     dependencies:
       '@milaboratories/pl-error-like': 1.12.5
       '@milaboratories/pl-model-common': 1.23.0
@@ -5774,15 +5774,15 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@platforma-sdk/test@1.51.5(@eslint/js@9.34.0)(@stylistic/eslint-plugin@2.13.0(eslint@9.34.0)(typescript@5.6.3))(@types/node@24.5.2)(eslint-plugin-n@17.21.3(eslint@9.34.0)(typescript@5.6.3))(eslint-plugin-vue@9.33.0(eslint@9.34.0))(globals@15.15.0)(typescript-eslint@8.41.0(eslint@9.34.0)(typescript@5.6.3))(typescript@5.6.3)(yaml@2.8.1)':
+  '@platforma-sdk/test@1.51.6(@eslint/js@9.34.0)(@stylistic/eslint-plugin@2.13.0(eslint@9.34.0)(typescript@5.6.3))(@types/node@24.5.2)(eslint-plugin-n@17.21.3(eslint@9.34.0)(typescript@5.6.3))(eslint-plugin-vue@9.33.0(eslint@9.34.0))(globals@15.15.0)(typescript-eslint@8.41.0(eslint@9.34.0)(typescript@5.6.3))(typescript@5.6.3)(yaml@2.8.1)':
     dependencies:
       '@milaboratories/computable': 2.8.0
       '@milaboratories/eslint-config': 1.0.5(@eslint/js@9.34.0)(@stylistic/eslint-plugin@2.13.0(eslint@9.34.0)(typescript@5.6.3))(eslint-plugin-n@17.21.3(eslint@9.34.0)(typescript@5.6.3))(eslint-plugin-vue@9.33.0(eslint@9.34.0))(eslint@9.34.0)(globals@15.15.0)(typescript-eslint@8.41.0(eslint@9.34.0)(typescript@5.6.3))(typescript@5.6.3)
       '@milaboratories/pl-client': 2.16.20
-      '@milaboratories/pl-middle-layer': 1.45.3
+      '@milaboratories/pl-middle-layer': 1.45.4
       '@milaboratories/pl-tree': 1.8.28
       '@milaboratories/ts-helpers': 1.5.4
-      '@platforma-sdk/model': 1.51.5
+      '@platforma-sdk/model': 1.51.6
       '@vitest/coverage-istanbul': 4.0.16(vitest@4.0.16(@types/node@24.5.2)(yaml@2.8.1))
       eslint: 9.34.0
       vitest: 4.0.16(@types/node@24.5.2)(yaml@2.8.1)
@@ -5819,12 +5819,12 @@ snapshots:
       - typescript-eslint
       - yaml
 
-  '@platforma-sdk/ui-vue@1.51.5(sortablejs@1.15.6)(typescript@5.6.3)':
+  '@platforma-sdk/ui-vue@1.51.6(sortablejs@1.15.6)(typescript@5.6.3)':
     dependencies:
       '@milaboratories/biowasm-tools': 2.0.0
       '@milaboratories/ptabler-expression-js': 1.1.9
-      '@milaboratories/uikit': 2.10.1(typescript@5.6.3)
-      '@platforma-sdk/model': 1.51.5
+      '@milaboratories/uikit': 2.10.2(typescript@5.6.3)
+      '@platforma-sdk/model': 1.51.6
       '@types/d3-format': 3.0.4
       '@types/node': 24.5.2
       '@types/semver': 7.7.0
