@@ -11,7 +11,7 @@ export type BlockArgs = {
 export const model = BlockModel.create()
 
   .withArgs<BlockArgs>({
-    defaultBlockLabel: '',
+    defaultBlockLabel: 'Select Clonotype Definition',
     customBlockLabel: '',
     clonotypeDefinition: [],
   })
