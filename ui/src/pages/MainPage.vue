@@ -8,8 +8,6 @@ const app = useApp();
 
 const isValid = computed(() => app.model.args.anchorRef !== undefined && (app.model.args.clonotypeDefinition?.length ?? 0) > 0);
 
-const subtitlePlaceholder = computed(() => app.model.args.defaultBlockLabel || 'Select Clonotype Definition');
-
 // Auto-derive default label whenever clonotype definition changes
 watchEffect(() => {
   const parts: string[] = [];
@@ -30,7 +28,7 @@ watchEffect(() => {
     parts.push(labels.join('-'));
   }
 
-  app.model.args.defaultBlockLabel = parts.filter(Boolean).join(' ');
+  app.model.args.defaultBlockLabel = parts.filter(Boolean).join(' ') || 'Select Clonotype Definition';
 });
 
 function setDataset(ref: PlRef | undefined) {
@@ -41,7 +39,7 @@ function setDataset(ref: PlRef | undefined) {
 <template>
   <PlBlockPage
     v-model:subtitle="app.model.args.customBlockLabel"
-    :subtitle-placeholder="subtitlePlaceholder"
+    :subtitle-placeholder="app.model.args.defaultBlockLabel"
     title="Redefine Clonotypes"
   >
     <PlDropdownRef
