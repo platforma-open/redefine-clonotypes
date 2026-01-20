@@ -1,5 +1,13 @@
 # @platforma-open/milaboratories.redefine-clonotypes
 
+## 1.1.6
+
+### Patch Changes
+
+- 82062d1: Added migration for labels
+- Updated dependencies [82062d1]
+  - @platforma-open/milaboratories.redefine-clonotypes.ui@1.2.3
+
 ## 1.1.5
 
 ### Patch Changes
