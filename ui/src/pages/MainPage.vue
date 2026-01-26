@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { PlRef } from '@platforma-sdk/model';
-import { PlAlert, PlBlockPage, PlDropdown, PlDropdownMulti, PlDropdownRef, PlIcon16, PlTooltip } from '@platforma-sdk/ui-vue';
+import { PlAlert, PlBlockPage, PlDropdown, PlDropdownMulti, PlDropdownRef } from '@platforma-sdk/ui-vue';
 import { computed, watchEffect } from 'vue';
 import { useApp } from '../app';
 
@@ -23,8 +23,8 @@ watchEffect(() => {
     // Get short labels from the definition columns
     const labels = app.model.args.clonotypeDefinition
       .map((colId) => {
-        const option = app.model.outputs.clonotypeDefinitionOptions
-          ?.find((o) => o.value === colId);
+        const options = app.model.outputs.clonotypeDefinitionOptions ?? [];
+        const option = options.find((o: { value: string; label: string }) => o.value === colId);
         // Extract short label, remove unnecessary words
         let label = option?.label || '';
         label = label.replace('InFrame', '').trim();

@@ -53,7 +53,6 @@ wf.prepare(func(args) {
 
 	// Clonotype definition columns
 	for i, colId in args.clonotypeDefinition {
-		ll.print("Adding clonotype definition column: " + colId)
 		bundleBuilder.addSingle(colId, "clonotypeDefinition_" + i)
 	}
 
@@ -113,11 +112,6 @@ wf.body(func(args) {
 
 	numberingRegions := ["FR1", "CDR1", "FR2", "CDR2", "FR3", "CDR3", "FR4"]
 	numberingScheme := args.numberingScheme
-	if numberingScheme == undefined {
-		if args.imgtNumbering == true { numberingScheme = "imgt" }
-		if args.kabatNumbering == true { numberingScheme = "kabat" }
-		if args.chothiaNumbering == true { numberingScheme = "chothia" }
-	}
 	numberingEnabled := numberingScheme != undefined
 	numberingHeaders := []
 	numberingSpecs := {}

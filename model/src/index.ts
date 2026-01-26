@@ -7,9 +7,6 @@ export type BlockArgs = {
   anchorRef?: PlRef;
   clonotypeDefinition: SUniversalPColumnId[];
   numberingScheme?: 'imgt' | 'kabat' | 'chothia';
-  imgtNumbering?: boolean;
-  kabatNumbering?: boolean;
-  chothiaNumbering?: boolean;
 };
 
 export const model = BlockModel.create()
