@@ -15,6 +15,7 @@ render := import("@platforma-sdk/workflow-tengo:render")
 
 anonymizationTpl := assets.importTemplate(":anonymization")
 deanonimizationTpl := assets.importTemplate(":deanonimization")
+numberingTpl := assets.importTemplate(":anarci-numbering")
 
 // --- Clonotype Label Generation (copied from MiXCR Clonotyping) ---
 addClonotypeLabelColumnsPt := func(df, clonotypeKeyCol, clonotypeLabelCol) {
@@ -52,6 +53,7 @@ wf.prepare(func(args) {
 
 	// Clonotype definition columns
 	for i, colId in args.clonotypeDefinition {
+		ll.print("Adding clonotype definition column: " + colId)
 		bundleBuilder.addSingle(colId, "clonotypeDefinition_" + i)
 	}
 
@@ -68,6 +70,13 @@ wf.prepare(func(args) {
 	bundleBuilder.addMulti({
 		axes: [{ anchor: "main", idx: 1 }]
 	}, "properties")
+
+	// VDJRegion assembling feature sequences (AA/NT)
+	bundleBuilder.addMulti({
+		axes: [{ anchor: "main", idx: 1 }],
+		name: "pl7.app/vdj/sequence",
+		annotations: { "pl7.app/vdj/isAssemblingFeature": "true" }
+	}, "vdjRegionSeqs")
 
 	return {
 		columns: bundleBuilder.build()
@@ -100,6 +109,22 @@ wf.body(func(args) {
 
 	sampleIdAxisSpec := mainAbundanceCol.spec.axesSpec[0]
 	clonotypeKeyAxisSpec := mainAbundanceCol.spec.axesSpec[1]
+	isSingleCell := clonotypeKeyAxisSpec.name == "pl7.app/vdj/scClonotypeKey"
+
+	numberingRegions := ["FR1", "CDR1", "FR2", "CDR2", "FR3", "CDR3", "FR4"]
+	numberingScheme := args.numberingScheme
+	if numberingScheme == undefined {
+		if args.imgtNumbering == true { numberingScheme = "imgt" }
+		if args.kabatNumbering == true { numberingScheme = "kabat" }
+		if args.chothiaNumbering == true { numberingScheme = "chothia" }
+	}
+	numberingEnabled := numberingScheme != undefined
+	numberingHeaders := []
+	numberingSpecs := {}
+	numberingLabels := {}
+	numberingTsv := undefined
+	numberingChains := []
+	numberingChainSet := {}
 
 	// Anonymize sampleId axis (index 0)
 	dataToAnonymize := {}
@@ -118,6 +143,141 @@ wf.body(func(args) {
 	abundanceTsvBuilder.setAxisHeader(sampleIdAxisSpec, "sampleId")
 	abundanceTsvBuilder.setAxisHeader(clonotypeKeyAxisSpec, "clonotypeKey")
 
+	if numberingEnabled {
+		vdjRegionCols := columns.getColumns("vdjRegionSeqs")
+		allowedFeatures := { "VDJRegion": true, "VDJRegionInFrame": true }
+		aaByChain := {}
+		ntByChain := {}
+		for _, col in vdjRegionCols {
+			feature := col.spec.domain["pl7.app/vdj/feature"]
+			if is_undefined(allowedFeatures[feature]) { continue }
+			chain := undefined
+			if isSingleCell {
+				receptor := col.spec.axesSpec[0].domain["pl7.app/vdj/receptor"]
+				if receptor != "IG" { continue }
+				index := col.spec.domain["pl7.app/vdj/scClonotypeChain/index"]
+				if index != "primary" { continue }
+				scChain := col.spec.domain["pl7.app/vdj/scClonotypeChain"]
+				chain = scChain == "A" ? "IGHeavy" : scChain == "B" ? "IGLight" : undefined
+			} else {
+				chain = col.spec.axesSpec[0].domain["pl7.app/vdj/chain"]
+				if chain == undefined { chain = col.spec.domain["pl7.app/vdj/chain"] }
+			}
+			alphabet := col.spec.domain["pl7.app/alphabet"]
+			chainKey := chain == "IGHeavy" ? "H" : chain == "IGLight" ? "KL" : undefined
+			if chainKey == undefined { continue }
+			if alphabet == "aminoacid" && is_undefined(aaByChain[chainKey]) {
+				aaByChain[chainKey] = col
+			} else if alphabet == "nucleotide" && is_undefined(ntByChain[chainKey]) {
+				ntByChain[chainKey] = col
+			}
+		}
+
+		hasH := !is_undefined(aaByChain["H"])
+		hasKL := !is_undefined(aaByChain["KL"])
+		if isSingleCell {
+			ll.assert(hasH && hasKL, "VDJRegion amino acid sequences for both chains are required for numbering")
+		} else {
+			ll.assert(hasH || hasKL, "VDJRegion amino acid sequence is required for numbering")
+		}
+
+		numberingAaTsvBuilder := pframes.tsvFileBuilder()
+		numberingAaTsvBuilder.setAxisHeader(clonotypeKeyAxisSpec, "clonotypeKey")
+		numberingInputTsvBuilder := pframes.tsvFileBuilder()
+		numberingInputTsvBuilder.setAxisHeader(clonotypeKeyAxisSpec, "clonotypeKey")
+
+		for _, chainKey in ["H", "KL"] {
+			col := aaByChain[chainKey]
+			if col != undefined {
+				headerAa := "vdjRegion_aa_" + chainKey
+				numberingAaTsvBuilder.add(col, { header: headerAa })
+				numberingInputTsvBuilder.add(col, { header: headerAa })
+			}
+		}
+		for _, chainKey in ["H", "KL"] {
+			col := ntByChain[chainKey]
+			if col != undefined {
+				headerNt := "vdjRegion_nt_" + chainKey
+				numberingInputTsvBuilder.add(col, { header: headerNt })
+			}
+		}
+
+		numberingAaTsvBuilder.mem("16GiB")
+		numberingAaTsvBuilder.cpu(1)
+		numberingInputTsvBuilder.mem("16GiB")
+		numberingInputTsvBuilder.cpu(1)
+
+		numberingAaTsv := numberingAaTsvBuilder.build()
+		numberingInputTsv := numberingInputTsvBuilder.build()
+
+		bulkChain := undefined
+		if !isSingleCell {
+			bulkChain = hasH ? "H" : "KL"
+		}
+
+		numbering := render.create(numberingTpl, {
+			inputAaTsv: numberingAaTsv,
+			inputTsv: numberingInputTsv,
+			scheme: numberingScheme,
+			isSingleCell: isSingleCell,
+			bulkChain: bulkChain
+		})
+		numberingTsv = numbering.output("numbered", 24 * 60 * 60 * 1000)
+
+		schemeLabel := numberingScheme == "imgt" ? "IMGT" : numberingScheme == "kabat" ? "Kabat" : "Chothia"
+		for _, chainKey in ["H", "KL"] {
+			if is_undefined(aaByChain[chainKey]) { continue }
+			if is_undefined(numberingChainSet[chainKey]) {
+				numberingChainSet[chainKey] = true
+				numberingChains = append(numberingChains, chainKey)
+			}
+			chainDomain := chainKey == "H" ? "IGHeavy" : "IGLight"
+			chainLabel := chainKey == "H" ? "Heavy" : "Light"
+			for _, region in numberingRegions {
+				for _, alphabet in ["aminoacid", "nucleotide"] {
+					header := numberingScheme + "_" + region + "_" + (alphabet == "aminoacid" ? "aa" : "nt") + "_" + chainKey
+					numberingHeaders = append(numberingHeaders, header)
+					numberingLabels[header] = schemeLabel + " " + region + " " + (alphabet == "aminoacid" ? "aa" : "nt") + " " + chainLabel
+					numberingSpecs[header] = {
+						name: "pl7.app/vdj/sequence",
+						valueType: "String",
+						domain: {
+							"pl7.app/vdj/feature": region,
+							"pl7.app/vdj/chain": chainDomain,
+							"pl7.app/alphabet": alphabet,
+							"pl7.app/vdj/numberingScheme": numberingScheme
+						},
+						annotations: {
+							"pl7.app/label": numberingLabels[header],
+							"pl7.app/table/visibility": "optional"
+						}
+					}
+				}
+			}
+			for _, feature in ["VDJRegion", "VDJRegionInFrame"] {
+				for _, alphabet in ["aminoacid", "nucleotide"] {
+					header := numberingScheme + "_" + feature + "_" + (alphabet == "aminoacid" ? "aa" : "nt") + "_" + chainKey
+					numberingHeaders = append(numberingHeaders, header)
+					numberingLabels[header] = schemeLabel + " " + feature + " " + (alphabet == "aminoacid" ? "aa" : "nt") + " " + chainLabel
+					numberingSpecs[header] = {
+						name: "pl7.app/vdj/sequence",
+						valueType: "String",
+						domain: {
+							"pl7.app/vdj/feature": feature,
+							"pl7.app/vdj/chain": chainDomain,
+							"pl7.app/alphabet": alphabet,
+							"pl7.app/vdj/numberingScheme": numberingScheme
+						},
+						annotations: {
+							"pl7.app/label": numberingLabels[header],
+							"pl7.app/table/visibility": "optional"
+						}
+					}
+				}
+			}
+		}
+	}
+
 	mainAbundanceHeader := "abundance_" + mainAbundanceColIndex
 	
 	abundanceHeaders := {}
@@ -131,11 +291,48 @@ wf.body(func(args) {
 	
 	definitionHeaders := []
 	definitionLabels := []
+	definitionHeaderSet := {}
+	appendDefinition := func(header, label) {
+		if label == undefined { label = header }
+		if is_undefined(definitionHeaderSet[header]) {
+			definitionHeaderSet[header] = true
+			definitionHeaders = append(definitionHeaders, header)
+			definitionLabels = append(definitionLabels, label)
+		}
+	}
 	for i, col in clonotypeDefinitionCols {
 		header := "clonotypeDefinition_" + i
-		definitionHeaders = append(definitionHeaders, header)
-		definitionLabels = append(definitionLabels, col.spec.annotations["pl7.app/label"])
+		label := col.spec.annotations["pl7.app/label"]
 		abundanceTsvBuilder.add(col, { header: header })
+
+		useNumbered := false
+		feature := col.spec.domain["pl7.app/vdj/feature"]
+		if numberingEnabled && col.spec.name == "pl7.app/vdj/sequence" && col.spec.annotations["pl7.app/vdj/isAssemblingFeature"] == "true" && (feature == "VDJRegion" || feature == "VDJRegionInFrame") {
+			chain := undefined
+			if isSingleCell {
+				receptor := col.spec.axesSpec[0].domain["pl7.app/vdj/receptor"]
+				if receptor != "IG" { chain = undefined } else {
+					index := col.spec.domain["pl7.app/vdj/scClonotypeChain/index"]
+					if index != "primary" { chain = undefined } else {
+						scChain := col.spec.domain["pl7.app/vdj/scClonotypeChain"]
+						chain = scChain == "A" ? "IGHeavy" : scChain == "B" ? "IGLight" : undefined
+					}
+				}
+			} else {
+				chain = col.spec.axesSpec[0].domain["pl7.app/vdj/chain"]
+				if chain == undefined { chain = col.spec.domain["pl7.app/vdj/chain"] }
+			}
+			alphabet := col.spec.domain["pl7.app/alphabet"]
+			chainKey := chain == "IGHeavy" ? "H" : chain == "IGLight" ? "KL" : undefined
+			if chainKey != undefined && (alphabet == "aminoacid" || alphabet == "nucleotide") {
+				headerNum := numberingScheme + "_" + feature + "_" + (alphabet == "aminoacid" ? "aa" : "nt") + "_" + chainKey
+				appendDefinition(headerNum, numberingLabels[headerNum])
+				useNumbered = true
+			}
+		}
+		if !useNumbered {
+			appendDefinition(header, label)
+		}
 	}
 
 	abundancesTsv := abundanceTsvBuilder.build()
@@ -155,6 +352,30 @@ wf.body(func(args) {
 	ptWf := pt.workflow()
 
 	df := ptWf.frame(abundancesTsv, {xsvType: "tsv"})
+	numberingDf := undefined
+	if numberingTsv != undefined {
+		numberingDf = ptWf.frame(numberingTsv, {xsvType: "tsv"})
+		df = df.join(numberingDf, {on: "clonotypeKey", how: "left"})
+		numberingDerivedExprs := []
+		for _, chainKey in numberingChains {
+			for _, alphabet in ["aminoacid", "nucleotide"] {
+				regionHeaders := []
+				for _, region in numberingRegions {
+					regionHeaders = append(regionHeaders, numberingScheme + "_" + region + "_" + (alphabet == "aminoacid" ? "aa" : "nt") + "_" + chainKey)
+				}
+				vdjHeader := numberingScheme + "_VDJRegion_" + (alphabet == "aminoacid" ? "aa" : "nt") + "_" + chainKey
+				vdjInFrameHeader := numberingScheme + "_VDJRegionInFrame_" + (alphabet == "aminoacid" ? "aa" : "nt") + "_" + chainKey
+				concatExpr := pt.concatStr(slices.map(regionHeaders, func(h) { return pt.col(h) }), {delimiter: ""})
+				numberingDerivedExprs = append(numberingDerivedExprs,
+					concatExpr.alias(vdjHeader),
+					concatExpr.alias(vdjInFrameHeader)
+				)
+			}
+		}
+		if len(numberingDerivedExprs) > 0 {
+			df = df.withColumns(numberingDerivedExprs...)
+		}
+	}
 
 	// 1. Calculate per-sample totals for each abundance column for normalization
 	sampleTotalAggs := []
@@ -205,9 +426,36 @@ wf.body(func(args) {
 	// 5. Get representative properties
 	
 	df_properties := df_abundances.join(ptWf.frame(propertiesTsv, {xsvType: "tsv"}), {on: "clonotypeKey", how: "left"})
+	if numberingDf != undefined {
+		df_properties = df_properties.join(numberingDf, {on: "clonotypeKey", how: "left"})
+		numberingDerivedExprsProps := []
+		for _, chainKey in numberingChains {
+			for _, alphabet in ["aminoacid", "nucleotide"] {
+				regionHeaders := []
+				for _, region in numberingRegions {
+					regionHeaders = append(regionHeaders, numberingScheme + "_" + region + "_" + (alphabet == "aminoacid" ? "aa" : "nt") + "_" + chainKey)
+				}
+				vdjHeader := numberingScheme + "_VDJRegion_" + (alphabet == "aminoacid" ? "aa" : "nt") + "_" + chainKey
+				vdjInFrameHeader := numberingScheme + "_VDJRegionInFrame_" + (alphabet == "aminoacid" ? "aa" : "nt") + "_" + chainKey
+				concatExpr := pt.concatStr(slices.map(regionHeaders, func(h) { return pt.col(h) }), {delimiter: ""})
+				numberingDerivedExprsProps = append(numberingDerivedExprsProps,
+					concatExpr.alias(vdjHeader),
+					concatExpr.alias(vdjInFrameHeader)
+				)
+			}
+		}
+		if len(numberingDerivedExprsProps) > 0 {
+			df_properties = df_properties.withColumns(numberingDerivedExprsProps...)
+		}
+	}
 
 	aggExpressions := []
 	for h, _ in propertyHeaders {
+		aggExpressions = append(aggExpressions,
+			pt.col(h).maxBy(pt.col(mainAbundanceHeader)).alias(h)
+		)
+	}
+	for _, h in numberingHeaders {
 		aggExpressions = append(aggExpressions,
 			pt.col(h).maxBy(pt.col(mainAbundanceHeader)).alias(h)
 		)
@@ -346,6 +594,9 @@ wf.body(func(args) {
 		delete(newSpec, "axesSpec")
 
 		newPropertyColumns = append(newPropertyColumns, { column: header, spec: newSpec })
+	}
+	for _, header in numberingHeaders {
+		newPropertyColumns = append(newPropertyColumns, { column: header, spec: numberingSpecs[header] })
 	}
 
 	propertyPf := xsv.importFile(finalPropertiesTsv, "tsv", {

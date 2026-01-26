@@ -6,6 +6,10 @@ export type BlockArgs = {
   customBlockLabel: string;
   anchorRef?: PlRef;
   clonotypeDefinition: SUniversalPColumnId[];
+  numberingScheme?: 'imgt' | 'kabat' | 'chothia';
+  imgtNumbering?: boolean;
+  kabatNumbering?: boolean;
+  chothiaNumbering?: boolean;
 };
 
 export const model = BlockModel.create()
@@ -41,11 +45,19 @@ export const model = BlockModel.create()
     const anchor = ctx.args.anchorRef;
     if (anchor === undefined) return undefined;
 
+    const isSingleCell = ctx.resultPool.getPColumnSpecByRef(anchor)?.axesSpec[1].name === 'pl7.app/vdj/scClonotypeKey';
+
+    const sequenceDomain: Record<string, string> = {};
+    if (isSingleCell) {
+      sequenceDomain['pl7.app/vdj/scClonotypeChain/index'] = 'primary';
+    }
+
     return ctx.resultPool.getCanonicalOptions({ main: anchor },
       [
         {
           axes: [{ anchor: 'main', idx: 1 }],
           name: 'pl7.app/vdj/sequence',
+          domain: sequenceDomain,
         },
         {
           axes: [{ anchor: 'main', idx: 1 }],
@@ -54,6 +66,66 @@ export const model = BlockModel.create()
       ],
     );
   })
+
+  .output('numberingAvailable', (ctx) => {
+    const anchor = ctx.args.anchorRef;
+    if (anchor === undefined) return false;
+
+    const anchorSpec = ctx.resultPool.getPColumnSpecByRef(anchor);
+    if (!anchorSpec) return false;
+
+    const isSingleCell = anchorSpec.axesSpec[1].name === 'pl7.app/vdj/scClonotypeKey';
+
+    const vdjRegionAa = ctx.resultPool.getAnchoredPColumns(
+      { main: anchor },
+      [{
+        axes: [{ anchor: 'main', idx: 1 }],
+        name: 'pl7.app/vdj/sequence',
+        domain: {
+          'pl7.app/vdj/feature': 'VDJRegion',
+          'pl7.app/alphabet': 'aminoacid',
+        },
+      }, {
+        axes: [{ anchor: 'main', idx: 1 }],
+        name: 'pl7.app/vdj/sequence',
+        domain: {
+          'pl7.app/vdj/feature': 'VDJRegionInFrame',
+          'pl7.app/alphabet': 'aminoacid',
+        },
+      }],
+      { ignoreMissingDomains: true },
+    );
+
+    if (!vdjRegionAa || vdjRegionAa.length === 0) return false;
+
+    const assemblingVdj = vdjRegionAa.filter((col) => col.spec.annotations?.['pl7.app/vdj/isAssemblingFeature'] === 'true');
+    if (assemblingVdj.length === 0) return false;
+
+    const hasHeavy = assemblingVdj.some((col) => {
+      if (isSingleCell) {
+        const receptor = col.spec.axesSpec?.[0]?.domain?.['pl7.app/vdj/receptor'];
+        if (receptor !== 'IG') return false;
+        const index = col.spec.domain?.['pl7.app/vdj/scClonotypeChain/index'];
+        if (index !== 'primary') return false;
+        return col.spec.domain?.['pl7.app/vdj/scClonotypeChain'] === 'A';
+      }
+      return col.spec.domain?.['pl7.app/vdj/chain'] === 'IGHeavy'
+        || col.spec.axesSpec?.some((axis) => axis.domain?.['pl7.app/vdj/chain'] === 'IGHeavy');
+    });
+    const hasLight = assemblingVdj.some((col) => {
+      if (isSingleCell) {
+        const receptor = col.spec.axesSpec?.[0]?.domain?.['pl7.app/vdj/receptor'];
+        if (receptor !== 'IG') return false;
+        const index = col.spec.domain?.['pl7.app/vdj/scClonotypeChain/index'];
+        if (index !== 'primary') return false;
+        return col.spec.domain?.['pl7.app/vdj/scClonotypeChain'] === 'B';
+      }
+      return col.spec.domain?.['pl7.app/vdj/chain'] === 'IGLight'
+        || col.spec.axesSpec?.some((axis) => axis.domain?.['pl7.app/vdj/chain'] === 'IGLight');
+    });
+
+    return isSingleCell ? (hasHeavy && hasLight) : (hasHeavy || hasLight);
+  }, { retentive: true })
 
   .output('stats', (ctx) => {
     const tsv = ctx.outputs?.resolve('statsTsvContent')?.getDataAsString();

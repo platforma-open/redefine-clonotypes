@@ -1,0 +1,84 @@
+self := import("@platforma-sdk/workflow-tengo:tpl")
+exec := import("@platforma-sdk/workflow-tengo:exec")
+assets := import("@platforma-sdk/workflow-tengo:assets")
+
+anarciSw := assets.importSoftware("@platforma-open/milaboratories.software-anarci:main")
+fastaSw := assets.importSoftware("@platforma-open/milaboratories.redefine-clonotypes.assembling-fasta:main")
+numberingSw := assets.importSoftware("@platforma-open/milaboratories.redefine-clonotypes.anarci-numbering:main")
+
+self.defineOutputs("numbered")
+
+self.body(func(inputs) {
+    inputAaTsv := inputs.inputAaTsv
+    inputTsv := inputs.inputTsv
+    scheme := inputs.scheme
+    isSingleCell := inputs.isSingleCell
+    bulkChain := inputs.bulkChain
+
+    fastaCmd := exec.builder().
+        software(fastaSw).
+        cpu(1).
+        mem("4GiB").
+        addFile("input.tsv", inputAaTsv).
+        arg("--input_tsv").arg("input.tsv").
+        arg("--key_column").arg("clonotypeKey").
+        arg("--output_fasta").arg("input.fasta").
+        saveFile("input.fasta").
+        printErrStreamToStdout().
+        cache(24 * 60 * 60 * 1000).
+        run()
+
+    anarciBuilder := exec.builder().
+        software(anarciSw).
+        arg("-i").arg("input.fasta").
+        arg("--scheme").arg(scheme).
+        arg("--ncpu").argWithVar("{system.cpu}").
+        arg("-o").arg("anarci.csv").arg("--csv").
+        addFile("input.fasta", fastaCmd.getFile("input.fasta"))
+    if isSingleCell {
+        anarciBuilder = anarciBuilder.saveFile("anarci.csv_H.csv").saveFile("anarci.csv_KL.csv")
+    } else {
+        if bulkChain == "H" {
+            anarciBuilder = anarciBuilder.saveFile("anarci.csv_H.csv")
+        } else {
+            anarciBuilder = anarciBuilder.saveFile("anarci.csv_KL.csv")
+        }
+    }
+    anarciBuilder = anarciBuilder.
+        printErrStreamToStdout().
+        cache(24 * 60 * 60 * 1000).
+        run()
+
+    numberingExec := exec.builder().
+        software(numberingSw).
+        addFile("input.tsv", inputTsv).
+        arg("--input_tsv").arg("input.tsv").
+        arg("--scheme").arg(scheme)
+    if isSingleCell {
+        numberingExec = numberingExec.
+            addFile("anarci.csv_H.csv", anarciBuilder.getFile("anarci.csv_H.csv")).
+            arg("--h_csv").arg("anarci.csv_H.csv").
+            addFile("anarci.csv_KL.csv", anarciBuilder.getFile("anarci.csv_KL.csv")).
+            arg("--kl_csv").arg("anarci.csv_KL.csv")
+    } else {
+        if bulkChain == "H" {
+            numberingExec = numberingExec.
+                addFile("anarci.csv_H.csv", anarciBuilder.getFile("anarci.csv_H.csv")).
+                arg("--h_csv").arg("anarci.csv_H.csv")
+        } else {
+            numberingExec = numberingExec.
+                addFile("anarci.csv_KL.csv", anarciBuilder.getFile("anarci.csv_KL.csv")).
+                arg("--kl_csv").arg("anarci.csv_KL.csv")
+        }
+    }
+    numberingExec = numberingExec.
+        arg("--out_tsv").arg("numbered.tsv").
+        saveFile("numbered.tsv").
+        printErrStreamToStdout().
+        cache(24 * 60 * 60 * 1000).
+        run()
+
+    return {
+        numbered: numberingExec.getFile("numbered.tsv")
+    }
+})
