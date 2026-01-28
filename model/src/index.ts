@@ -93,10 +93,8 @@ export const model = BlockModel.create()
       { ignoreMissingDomains: true },
     );
 
-    if (!vdjRegionAa || vdjRegionAa.length === 0) return false;
-
-    const assemblingVdj = vdjRegionAa.filter((col) => col.spec.annotations?.['pl7.app/vdj/isAssemblingFeature'] === 'true');
-    if (assemblingVdj.length === 0) return false;
+    const assemblingVdj = (vdjRegionAa ?? []).filter((col) =>
+      col.spec.annotations?.['pl7.app/vdj/isAssemblingFeature'] === 'true');
 
     const hasHeavy = assemblingVdj.some((col) => {
       if (isSingleCell) {
@@ -121,7 +119,62 @@ export const model = BlockModel.create()
         || col.spec.axesSpec?.some((axis) => axis.domain?.['pl7.app/vdj/chain'] === 'IGLight');
     });
 
-    return isSingleCell ? (hasHeavy && hasLight) : (hasHeavy || hasLight);
+    const vdjOk = isSingleCell ? (hasHeavy && hasLight) : (hasHeavy || hasLight);
+    if (vdjOk) return true;
+
+    const cdr3MainAa = ctx.resultPool.getAnchoredPColumns(
+      { main: anchor },
+      [{
+        axes: [{ anchor: 'main', idx: 1 }],
+        name: 'pl7.app/vdj/sequence',
+        domain: {
+          'pl7.app/vdj/feature': 'CDR3',
+          'pl7.app/alphabet': 'aminoacid',
+        },
+      }, {
+        axes: [{ anchor: 'main', idx: 1 }],
+        name: 'pl7.app/vdj/sequence',
+        domain: {
+          'pl7.app/vdj/feature': 'CDR3',
+        },
+      }],
+      { ignoreMissingDomains: true },
+    );
+
+    if (!cdr3MainAa || cdr3MainAa.length === 0) return false;
+
+    const cdr3MainFiltered = cdr3MainAa.filter((col) =>
+      col.spec.annotations?.['pl7.app/vdj/isMainSequence'] === 'true');
+    const cdr3Candidates = cdr3MainFiltered.length > 0 ? cdr3MainFiltered : cdr3MainAa;
+
+    const hasCdr3Heavy = cdr3Candidates.some((col) => {
+      if (isSingleCell) {
+        const receptor = col.spec.axesSpec?.[0]?.domain?.['pl7.app/vdj/receptor'];
+        if (receptor && receptor !== 'IG') return false;
+        const index = col.spec.domain?.['pl7.app/vdj/scClonotypeChain/index'];
+        if (index && index !== 'primary') return false;
+        return col.spec.domain?.['pl7.app/vdj/scClonotypeChain'] === 'A';
+      }
+      return col.spec.domain?.['pl7.app/vdj/chain'] === 'IGHeavy'
+        || col.spec.axesSpec?.some((axis) => axis.domain?.['pl7.app/vdj/chain'] === 'IGHeavy');
+    });
+    const hasCdr3Light = cdr3Candidates.some((col) => {
+      if (isSingleCell) {
+        const receptor = col.spec.axesSpec?.[0]?.domain?.['pl7.app/vdj/receptor'];
+        if (receptor && receptor !== 'IG') return false;
+        const index = col.spec.domain?.['pl7.app/vdj/scClonotypeChain/index'];
+        if (index && index !== 'primary') return false;
+        return col.spec.domain?.['pl7.app/vdj/scClonotypeChain'] === 'B';
+      }
+      return col.spec.domain?.['pl7.app/vdj/chain'] === 'IGLight'
+        || col.spec.axesSpec?.some((axis) => axis.domain?.['pl7.app/vdj/chain'] === 'IGLight');
+    });
+
+    if (isSingleCell) {
+      if (hasCdr3Heavy && hasCdr3Light) return true;
+      return cdr3Candidates.length > 0;
+    }
+    return hasCdr3Heavy || hasCdr3Light || cdr3Candidates.length > 0;
   }, { retentive: true })
 
   .output('stats', (ctx) => {

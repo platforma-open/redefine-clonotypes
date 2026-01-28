@@ -77,6 +77,14 @@ wf.prepare(func(args) {
 		annotations: { "pl7.app/vdj/isAssemblingFeature": "true" }
 	}, "vdjRegionSeqs")
 
+	// CDR3 main sequences (AA/NT)
+	bundleBuilder.addMulti({
+		axes: [{ anchor: "main", idx: 1 }],
+		name: "pl7.app/vdj/sequence",
+		annotations: { "pl7.app/vdj/isMainSequence": "true" },
+		domain: { "pl7.app/vdj/feature": "CDR3" }
+	}, "cdr3MainSeqs")
+
 	return {
 		columns: bundleBuilder.build()
 	}
@@ -119,6 +127,13 @@ wf.body(func(args) {
 	numberingTsv := undefined
 	numberingChains := []
 	numberingChainSet := {}
+	cdr3Tsv := undefined
+	cdr3Chains := []
+	cdr3ChainSet := {}
+	cdr3HasAa := {}
+	cdr3HasNt := {}
+	useCdr3Numbering := false
+	existingSeqKeys := {}
 
 	// Anonymize sampleId axis (index 0)
 	dataToAnonymize := {}
@@ -169,54 +184,122 @@ wf.body(func(args) {
 
 		hasH := !is_undefined(aaByChain["H"])
 		hasKL := !is_undefined(aaByChain["KL"])
+
+		// CDR3-only fallback (main sequence)
+		cdr3Cols := columns.getColumns("cdr3MainSeqs")
+		cdr3AaByChain := {}
+		cdr3NtByChain := {}
+		for _, col in cdr3Cols {
+			if col.spec.domain["pl7.app/vdj/feature"] != "CDR3" { continue }
+			chain := undefined
+			if isSingleCell {
+				receptor := col.spec.axesSpec[0].domain["pl7.app/vdj/receptor"]
+				if receptor != "IG" { continue }
+				index := col.spec.domain["pl7.app/vdj/scClonotypeChain/index"]
+				if index != "primary" { continue }
+				scChain := col.spec.domain["pl7.app/vdj/scClonotypeChain"]
+				chain = scChain == "A" ? "IGHeavy" : scChain == "B" ? "IGLight" : undefined
+			} else {
+				chain = col.spec.axesSpec[0].domain["pl7.app/vdj/chain"]
+				if chain == undefined { chain = col.spec.domain["pl7.app/vdj/chain"] }
+			}
+			alphabet := col.spec.domain["pl7.app/alphabet"]
+			chainKey := chain == "IGHeavy" ? "H" : chain == "IGLight" ? "KL" : undefined
+			if chainKey == undefined { continue }
+			if alphabet == "aminoacid" && is_undefined(cdr3AaByChain[chainKey]) {
+				cdr3AaByChain[chainKey] = col
+			} else if alphabet == "nucleotide" && is_undefined(cdr3NtByChain[chainKey]) {
+				cdr3NtByChain[chainKey] = col
+			}
+		}
+
+		hasCdr3H := !is_undefined(cdr3AaByChain["H"])
+		hasCdr3KL := !is_undefined(cdr3AaByChain["KL"])
+		useVdjRegionNumbering := hasH || hasKL
+		useCdr3Numbering = !useVdjRegionNumbering && (hasCdr3H || hasCdr3KL)
+
 		if isSingleCell {
-			ll.assert(hasH && hasKL, "VDJRegion amino acid sequences for both chains are required for numbering")
+			ll.assert(useVdjRegionNumbering ? (hasH && hasKL) : (hasCdr3H && hasCdr3KL), "Sequences for both chains are required for numbering")
 		} else {
-			ll.assert(hasH || hasKL, "VDJRegion amino acid sequence is required for numbering")
+			ll.assert(useVdjRegionNumbering || useCdr3Numbering, "VDJRegion or CDR3 amino acid sequence is required for numbering")
 		}
 
-		numberingAaTsvBuilder := pframes.tsvFileBuilder()
-		numberingAaTsvBuilder.setAxisHeader(clonotypeKeyAxisSpec, "clonotypeKey")
-		numberingInputTsvBuilder := pframes.tsvFileBuilder()
-		numberingInputTsvBuilder.setAxisHeader(clonotypeKeyAxisSpec, "clonotypeKey")
+		if useVdjRegionNumbering {
+			numberingAaTsvBuilder := pframes.tsvFileBuilder()
+			numberingAaTsvBuilder.setAxisHeader(clonotypeKeyAxisSpec, "clonotypeKey")
+			numberingInputTsvBuilder := pframes.tsvFileBuilder()
+			numberingInputTsvBuilder.setAxisHeader(clonotypeKeyAxisSpec, "clonotypeKey")
 
-		for _, chainKey in ["H", "KL"] {
-			col := aaByChain[chainKey]
-			if col != undefined {
-				headerAa := "vdjRegion_aa_" + chainKey
-				numberingAaTsvBuilder.add(col, { header: headerAa })
-				numberingInputTsvBuilder.add(col, { header: headerAa })
+			for _, chainKey in ["H", "KL"] {
+				col := aaByChain[chainKey]
+				if col != undefined {
+					headerAa := "vdjRegion_aa_" + chainKey
+					numberingAaTsvBuilder.add(col, { header: headerAa })
+					numberingInputTsvBuilder.add(col, { header: headerAa })
+				}
 			}
-		}
-		for _, chainKey in ["H", "KL"] {
-			col := ntByChain[chainKey]
-			if col != undefined {
-				headerNt := "vdjRegion_nt_" + chainKey
-				numberingInputTsvBuilder.add(col, { header: headerNt })
+			for _, chainKey in ["H", "KL"] {
+				col := ntByChain[chainKey]
+				if col != undefined {
+					headerNt := "vdjRegion_nt_" + chainKey
+					numberingInputTsvBuilder.add(col, { header: headerNt })
+				}
 			}
+
+			numberingAaTsvBuilder.mem("16GiB")
+			numberingAaTsvBuilder.cpu(1)
+			numberingInputTsvBuilder.mem("16GiB")
+			numberingInputTsvBuilder.cpu(1)
+
+			numberingAaTsv := numberingAaTsvBuilder.build()
+			numberingInputTsv := numberingInputTsvBuilder.build()
+
+			bulkChain := undefined
+			if !isSingleCell {
+				bulkChain = hasH ? "H" : "KL"
+			}
+
+			numbering := render.create(numberingTpl, {
+				inputAaTsv: numberingAaTsv,
+				inputTsv: numberingInputTsv,
+				scheme: numberingScheme,
+				isSingleCell: isSingleCell,
+				bulkChain: bulkChain
+			})
+			numberingTsv = numbering.output("numbered", 24 * 60 * 60 * 1000)
 		}
 
-		numberingAaTsvBuilder.mem("16GiB")
-		numberingAaTsvBuilder.cpu(1)
-		numberingInputTsvBuilder.mem("16GiB")
-		numberingInputTsvBuilder.cpu(1)
-
-		numberingAaTsv := numberingAaTsvBuilder.build()
-		numberingInputTsv := numberingInputTsvBuilder.build()
-
-		bulkChain := undefined
-		if !isSingleCell {
-			bulkChain = hasH ? "H" : "KL"
+		if useCdr3Numbering {
+			cdr3TsvBuilder := pframes.tsvFileBuilder()
+			cdr3TsvBuilder.setAxisHeader(clonotypeKeyAxisSpec, "clonotypeKey")
+			for _, chainKey in ["H", "KL"] {
+				col := cdr3AaByChain[chainKey]
+				if col != undefined {
+					headerAa := "cdr3_aa_" + chainKey
+					cdr3TsvBuilder.add(col, { header: headerAa })
+					cdr3HasAa[chainKey] = true
+					if is_undefined(cdr3ChainSet[chainKey]) {
+						cdr3ChainSet[chainKey] = true
+						cdr3Chains = append(cdr3Chains, chainKey)
+					}
+				}
+			}
+			for _, chainKey in ["H", "KL"] {
+				col := cdr3NtByChain[chainKey]
+				if col != undefined {
+					headerNt := "cdr3_nt_" + chainKey
+					cdr3TsvBuilder.add(col, { header: headerNt })
+					cdr3HasNt[chainKey] = true
+					if is_undefined(cdr3ChainSet[chainKey]) {
+						cdr3ChainSet[chainKey] = true
+						cdr3Chains = append(cdr3Chains, chainKey)
+					}
+				}
+			}
+			cdr3TsvBuilder.mem("16GiB")
+			cdr3TsvBuilder.cpu(1)
+			cdr3Tsv = cdr3TsvBuilder.build()
 		}
-
-		numbering := render.create(numberingTpl, {
-			inputAaTsv: numberingAaTsv,
-			inputTsv: numberingInputTsv,
-			scheme: numberingScheme,
-			isSingleCell: isSingleCell,
-			bulkChain: bulkChain
-		})
-		numberingTsv = numbering.output("numbered", 24 * 60 * 60 * 1000)
 
 		schemeLabel := numberingScheme == "imgt" ? "IMGT" : numberingScheme == "kabat" ? "Kabat" : "Chothia"
 		for _, chainKey in ["H", "KL"] {
@@ -364,10 +447,69 @@ wf.body(func(args) {
 					concatExpr.alias(vdjHeader),
 					concatExpr.alias(vdjInFrameHeader)
 				)
+				fr4Header := numberingScheme + "_FR4_" + (alphabet == "aminoacid" ? "aa" : "nt") + "_" + chainKey
+				fr4InFrameHeader := numberingScheme + "_FR4InFrame_" + (alphabet == "aminoacid" ? "aa" : "nt") + "_" + chainKey
+				numberingDerivedExprs = append(numberingDerivedExprs,
+					pt.col(fr4Header).alias(fr4InFrameHeader)
+				)
 			}
 		}
 		if len(numberingDerivedExprs) > 0 {
 			df = df.withColumns(numberingDerivedExprs...)
+		}
+	}
+	cdr3Df := undefined
+	if cdr3Tsv != undefined {
+		cdr3Df = ptWf.frame(cdr3Tsv, {xsvType: "tsv"})
+		df = df.join(cdr3Df, {on: "clonotypeKey", how: "left"})
+		cdr3DerivedExprs := []
+		for _, chainKey in cdr3Chains {
+			aaCol := "cdr3_aa_" + chainKey
+			ntCol := "cdr3_nt_" + chainKey
+			isImgt := numberingScheme == "imgt"
+			if !is_undefined(cdr3HasAa[chainKey]) {
+				aaLen := pt.col(aaCol).strLenChars()
+				aaFr3Len := isImgt ? 1 : 3
+				aaFr4 := pt.col(aaCol).strSlice(aaLen.minus(1), 1)
+				aaTrimLen := aaLen.minus(aaFr3Len + 1)
+				aaTrim := pt.col(aaCol).strSlice(aaFr3Len, { length: aaTrimLen })
+				cdr3DerivedExprs = append(cdr3DerivedExprs,
+					aaTrim.alias("cdr3_trim_aa_" + chainKey)
+				)
+				if !is_undefined(existingSeqKeys["FR4|aminoacid|" + chainKey]) {
+					cdr3DerivedExprs = append(cdr3DerivedExprs,
+						aaFr4.alias(numberingScheme + "_FR4_aa_" + chainKey)
+					)
+				}
+				if !is_undefined(existingSeqKeys["FR4InFrame|aminoacid|" + chainKey]) {
+					cdr3DerivedExprs = append(cdr3DerivedExprs,
+						aaFr4.alias(numberingScheme + "_FR4InFrame_aa_" + chainKey)
+					)
+				}
+			}
+			if !is_undefined(cdr3HasNt[chainKey]) {
+				ntLen := pt.col(ntCol).strLenChars()
+				ntFr3Len := isImgt ? 3 : 9
+				ntFr4 := pt.col(ntCol).strSlice(ntLen.minus(3), 3)
+				ntTrimLen := ntLen.minus(ntFr3Len + 3)
+				ntTrim := pt.col(ntCol).strSlice(ntFr3Len, { length: ntTrimLen })
+				cdr3DerivedExprs = append(cdr3DerivedExprs,
+					ntTrim.alias("cdr3_trim_nt_" + chainKey)
+				)
+				if !is_undefined(existingSeqKeys["FR4|nucleotide|" + chainKey]) {
+					cdr3DerivedExprs = append(cdr3DerivedExprs,
+						ntFr4.alias(numberingScheme + "_FR4_nt_" + chainKey)
+					)
+				}
+				if !is_undefined(existingSeqKeys["FR4InFrame|nucleotide|" + chainKey]) {
+					cdr3DerivedExprs = append(cdr3DerivedExprs,
+						ntFr4.alias(numberingScheme + "_FR4InFrame_nt_" + chainKey)
+					)
+				}
+			}
+		}
+		if len(cdr3DerivedExprs) > 0 {
+			df = df.withColumns(cdr3DerivedExprs...)
 		}
 	}
 
@@ -418,6 +560,31 @@ wf.body(func(args) {
 	df_abundances.save("abundances.tsv")
 
 	// 5. Get representative properties
+
+	existingSeqKeys = {}
+	for h, col in propertyHeaders {
+		if col.spec.name != "pl7.app/vdj/sequence" { continue }
+		feature := col.spec.domain["pl7.app/vdj/feature"]
+		chain := undefined
+		if isSingleCell {
+			receptor := col.spec.axesSpec[0].domain["pl7.app/vdj/receptor"]
+			if receptor == "IG" {
+				index := col.spec.domain["pl7.app/vdj/scClonotypeChain/index"]
+				if index == "primary" {
+					scChain := col.spec.domain["pl7.app/vdj/scClonotypeChain"]
+					chain = scChain == "A" ? "IGHeavy" : scChain == "B" ? "IGLight" : undefined
+				}
+			}
+		} else {
+			chain = col.spec.axesSpec[0].domain["pl7.app/vdj/chain"]
+			if chain == undefined { chain = col.spec.domain["pl7.app/vdj/chain"] }
+		}
+		alphabet := col.spec.domain["pl7.app/alphabet"]
+		chainKey := chain == "IGHeavy" ? "H" : chain == "IGLight" ? "KL" : undefined
+		if chainKey != undefined && alphabet != undefined && feature != undefined {
+			existingSeqKeys[feature + "|" + alphabet + "|" + chainKey] = true
+		}
+	}
 	
 	df_properties := df_abundances.join(ptWf.frame(propertiesTsv, {xsvType: "tsv"}), {on: "clonotypeKey", how: "left"})
 	if numberingDf != undefined {
@@ -436,23 +603,126 @@ wf.body(func(args) {
 					concatExpr.alias(vdjHeader),
 					concatExpr.alias(vdjInFrameHeader)
 				)
+				fr4Header := numberingScheme + "_FR4_" + (alphabet == "aminoacid" ? "aa" : "nt") + "_" + chainKey
+				fr4InFrameHeader := numberingScheme + "_FR4InFrame_" + (alphabet == "aminoacid" ? "aa" : "nt") + "_" + chainKey
+				numberingDerivedExprsProps = append(numberingDerivedExprsProps,
+					pt.col(fr4Header).alias(fr4InFrameHeader)
+				)
 			}
 		}
 		if len(numberingDerivedExprsProps) > 0 {
 			df_properties = df_properties.withColumns(numberingDerivedExprsProps...)
 		}
 	}
+	if cdr3Df != undefined {
+		df_properties = df_properties.join(cdr3Df, {on: "clonotypeKey", how: "left"})
+		cdr3DerivedExprsProps := []
+		for _, chainKey in cdr3Chains {
+			aaCol := "cdr3_aa_" + chainKey
+			ntCol := "cdr3_nt_" + chainKey
+			isImgt := numberingScheme == "imgt"
+			if !is_undefined(cdr3HasAa[chainKey]) {
+				aaLen := pt.col(aaCol).strLenChars()
+				aaFr3Len := isImgt ? 1 : 3
+				aaFr4 := pt.col(aaCol).strSlice(aaLen.minus(1), 1)
+				aaTrimLen := aaLen.minus(aaFr3Len + 1)
+				aaTrim := pt.col(aaCol).strSlice(aaFr3Len, { length: aaTrimLen })
+				cdr3DerivedExprsProps = append(cdr3DerivedExprsProps,
+					aaTrim.alias("cdr3_trim_aa_" + chainKey)
+				)
+				if !is_undefined(existingSeqKeys["FR4|aminoacid|" + chainKey]) {
+					cdr3DerivedExprsProps = append(cdr3DerivedExprsProps,
+						aaFr4.alias(numberingScheme + "_FR4_aa_" + chainKey)
+					)
+				}
+				if !is_undefined(existingSeqKeys["FR4InFrame|aminoacid|" + chainKey]) {
+					cdr3DerivedExprsProps = append(cdr3DerivedExprsProps,
+						aaFr4.alias(numberingScheme + "_FR4InFrame_aa_" + chainKey)
+					)
+				}
+			}
+			if !is_undefined(cdr3HasNt[chainKey]) {
+				ntLen := pt.col(ntCol).strLenChars()
+				ntFr3Len := isImgt ? 3 : 9
+				ntFr4 := pt.col(ntCol).strSlice(ntLen.minus(3), 3)
+				ntTrimLen := ntLen.minus(ntFr3Len + 3)
+				ntTrim := pt.col(ntCol).strSlice(ntFr3Len, { length: ntTrimLen })
+				cdr3DerivedExprsProps = append(cdr3DerivedExprsProps,
+					ntTrim.alias("cdr3_trim_nt_" + chainKey)
+				)
+				if !is_undefined(existingSeqKeys["FR4|nucleotide|" + chainKey]) {
+					cdr3DerivedExprsProps = append(cdr3DerivedExprsProps,
+						ntFr4.alias(numberingScheme + "_FR4_nt_" + chainKey)
+					)
+				}
+				if !is_undefined(existingSeqKeys["FR4InFrame|nucleotide|" + chainKey]) {
+					cdr3DerivedExprsProps = append(cdr3DerivedExprsProps,
+						ntFr4.alias(numberingScheme + "_FR4InFrame_nt_" + chainKey)
+					)
+				}
+			}
+		}
+		if len(cdr3DerivedExprsProps) > 0 {
+			df_properties = df_properties.withColumns(cdr3DerivedExprsProps...)
+		}
+	}
 
 	aggExpressions := []
 	for h, _ in propertyHeaders {
-		aggExpressions = append(aggExpressions,
-			pt.col(h).maxBy(pt.col(mainAbundanceHeader)).alias(h)
-		)
-	}
-	for _, h in numberingHeaders {
-		aggExpressions = append(aggExpressions,
-			pt.col(h).maxBy(pt.col(mainAbundanceHeader)).alias(h)
-		)
+		col := propertyHeaders[h]
+		useNumbered := false
+		if numberingEnabled && col.spec.name == "pl7.app/vdj/sequence" {
+			feature := col.spec.domain["pl7.app/vdj/feature"]
+			isNumberedFeature := false
+			if useCdr3Numbering {
+				isNumberedFeature = feature == "CDR3" || feature == "FR3" || feature == "FR4" || feature == "FR4InFrame"
+			} else {
+				isNumberedFeature = feature == "VDJRegion" || feature == "VDJRegionInFrame" || feature == "FR4InFrame" || slices.hasElement(numberingRegions, feature)
+			}
+			if !isNumberedFeature {
+				feature = undefined
+			}
+			mappedFeature := feature
+			chain := undefined
+			if isSingleCell {
+				receptor := col.spec.axesSpec[0].domain["pl7.app/vdj/receptor"]
+				if receptor == "IG" {
+					index := col.spec.domain["pl7.app/vdj/scClonotypeChain/index"]
+					if index == "primary" {
+						scChain := col.spec.domain["pl7.app/vdj/scClonotypeChain"]
+						chain = scChain == "A" ? "IGHeavy" : scChain == "B" ? "IGLight" : undefined
+					}
+				}
+			} else {
+				chain = col.spec.axesSpec[0].domain["pl7.app/vdj/chain"]
+				if chain == undefined { chain = col.spec.domain["pl7.app/vdj/chain"] }
+			}
+			alphabet := col.spec.domain["pl7.app/alphabet"]
+			chainKey := chain == "IGHeavy" ? "H" : chain == "IGLight" ? "KL" : undefined
+			if mappedFeature != undefined && chainKey != undefined && (alphabet == "aminoacid" || alphabet == "nucleotide") {
+				headerNum := numberingScheme + "_" + mappedFeature + "_" + (alphabet == "aminoacid" ? "aa" : "nt") + "_" + chainKey
+				if useCdr3Numbering && feature == "CDR3" {
+					trimHeader := "cdr3_trim_" + (alphabet == "aminoacid" ? "aa" : "nt") + "_" + chainKey
+					aggExpressions = append(aggExpressions,
+						pt.col(trimHeader).maxBy(pt.col(mainAbundanceHeader)).alias(h)
+					)
+				} else if useCdr3Numbering && (feature == "FR4" || feature == "FR4InFrame") {
+					aggExpressions = append(aggExpressions,
+						pt.concatStr([pt.col(h), pt.col(headerNum)], { delimiter: "" }).maxBy(pt.col(mainAbundanceHeader)).alias(h)
+					)
+				} else {
+					aggExpressions = append(aggExpressions,
+						pt.col(headerNum).maxBy(pt.col(mainAbundanceHeader)).alias(h)
+					)
+				}
+				useNumbered = true
+			}
+		}
+		if !useNumbered {
+			aggExpressions = append(aggExpressions,
+				pt.col(h).maxBy(pt.col(mainAbundanceHeader)).alias(h)
+			)
+		}
 	}
 	aggregatedDf := df_properties.groupBy("newClonotypeKey").agg(aggExpressions...)
 
@@ -588,9 +858,6 @@ wf.body(func(args) {
 		delete(newSpec, "axesSpec")
 
 		newPropertyColumns = append(newPropertyColumns, { column: header, spec: newSpec })
-	}
-	for _, header in numberingHeaders {
-		newPropertyColumns = append(newPropertyColumns, { column: header, spec: numberingSpecs[header] })
 	}
 
 	propertyPf := xsv.importFile(finalPropertiesTsv, "tsv", {

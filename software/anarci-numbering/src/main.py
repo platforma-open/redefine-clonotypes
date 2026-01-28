@@ -148,8 +148,6 @@ def build_regions(
             continue
 
         if is_gap:
-            aa_regions[region].append(".")
-            nt_regions[region].append("...")
             continue
 
         aa_regions[region].append(residue)
