@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { PlRef } from '@platforma-sdk/model';
-import { PlAlert, PlBlockPage, PlDropdown, PlDropdownMulti, PlDropdownRef } from '@platforma-sdk/ui-vue';
-import { computed, watchEffect } from 'vue';
+import { PlAlert, PlBlockPage, PlDropdownMulti, PlDropdownRef } from '@platforma-sdk/ui-vue';
+import { computed } from 'vue';
 import { useApp } from '../app';
 
 const app = useApp();
@@ -14,35 +14,6 @@ const numberingSchemeOptions = [
   { label: 'Kabat', value: 'kabat' },
   { label: 'Chothia', value: 'chothia' },
 ];
-
-// Auto-derive default label whenever clonotype definition changes
-watchEffect(() => {
-  const parts: string[] = [];
-
-  if (app.model.args.clonotypeDefinition?.length) {
-    // Get short labels from the definition columns
-    const labels = app.model.args.clonotypeDefinition
-      .map((colId) => {
-        const options = app.model.outputs.clonotypeDefinitionOptions ?? [];
-        const option = options.find((o: { value: string; label: string }) => o.value === colId);
-        // Extract short label, remove unnecessary words
-        let label = option?.label || '';
-        label = label.replace('InFrame', '').trim();
-        return label;
-      })
-      .filter(Boolean);
-
-    parts.push(labels.join('-'));
-  }
-
-  app.model.args.defaultBlockLabel = parts.filter(Boolean).join(' ') || 'Select Clonotype Definition';
-});
-
-watchEffect(() => {
-  if (app.model.args.anchorRef === undefined) {
-    app.model.args.numberingScheme = undefined;
-  }
-});
 
 function setDataset(ref: PlRef | undefined) {
   app.model.args.anchorRef = ref;

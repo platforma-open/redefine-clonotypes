@@ -23,6 +23,7 @@
     "type-check": "ts-builder types --target block-model"
   },
   "dependencies": {
+    "@milaboratories/strings": "catalog:",
     "@platforma-sdk/model": "catalog:"
   },
   "devDependencies": {
