@@ -1,5 +1,7 @@
 import type { InferOutputsType, PlRef, SUniversalPColumnId } from '@platforma-sdk/model';
 import { BlockModel } from '@platforma-sdk/model';
+import strings from '@milaboratories/strings';
+import { getDefaultBlockLabel } from './label';
 
 export type BlockArgs = {
   defaultBlockLabel: string;
@@ -12,7 +14,7 @@ export type BlockArgs = {
 export const model = BlockModel.create()
 
   .withArgs<BlockArgs>({
-    defaultBlockLabel: 'Select Clonotype Definition',
+    defaultBlockLabel: getDefaultBlockLabel({ clonotypeDefinitionLabels: [] }),
     customBlockLabel: '',
     clonotypeDefinition: [],
   })
@@ -206,8 +208,10 @@ export const model = BlockModel.create()
 
   .subtitle((ctx) => ctx.args.customBlockLabel || ctx.args.defaultBlockLabel)
 
-  .sections((_ctx) => [{ type: 'link', href: '/', label: 'Main' }])
+  .sections((_ctx) => [{ type: 'link', href: '/', label: strings.titles.main }])
 
   .done(2);
 
 export type BlockOutputs = InferOutputsType<typeof model>;
+
+export { getDefaultBlockLabel } from './label';
