@@ -2,16 +2,22 @@
   "name": "@platforma-open/milaboratories.redefine-clonotypes.workflow",
   "version": "1.3.1",
   "type": "module",
-  "description": "Tengo-based template",
+  "description": "Block Workflow",
   "scripts": {
     "build": "rm -rf dist && pl-tengo check && pl-tengo build",
+    "test": "vitest",
     "format": "/usr/bin/env emacs --script ./format.el",
     "do-pack": "rm -f *.tgz && pnpm pack && mv *.tgz package.tgz"
   },
   "dependencies": {
-    "@platforma-sdk/workflow-tengo": "catalog:"
+    "@platforma-open/milaboratories.redefine-clonotypes.assembling-fasta": "workspace:*",
+    "@platforma-open/milaboratories.redefine-clonotypes.anarci-numbering": "workspace:*",
+    "@platforma-sdk/workflow-tengo": "catalog:",
+    "@platforma-open/milaboratories.software-anarci": "catalog:"
   },
   "devDependencies": {
-    "@platforma-sdk/tengo-builder": "catalog:"
+    "@platforma-sdk/tengo-builder": "catalog:",
+    "@platforma-sdk/test": "catalog:",
+    "vitest": "catalog:"
   }
 }
