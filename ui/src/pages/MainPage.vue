@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { PlRef } from '@platforma-sdk/model';
-import { PlAlert, PlBlockPage, PlDropdownMulti, PlDropdownRef } from '@platforma-sdk/ui-vue';
+import { PlAlert, PlBlockPage, PlDropdown, PlDropdownMulti, PlDropdownRef } from '@platforma-sdk/ui-vue';
 import { computed } from 'vue';
 import { useApp } from '../app';
 
