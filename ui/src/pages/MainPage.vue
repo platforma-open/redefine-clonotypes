@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { PlRef } from '@platforma-sdk/model';
 import { PlAlert, PlBlockPage, PlDropdown, PlDropdownMulti, PlDropdownRef } from '@platforma-sdk/ui-vue';
-import { computed } from 'vue';
+import { computed, watchEffect } from 'vue';
 import { useApp } from '../app';
 
 const app = useApp();
@@ -14,6 +14,12 @@ const numberingSchemeOptions = [
   { label: 'Kabat', value: 'kabat' },
   { label: 'Chothia', value: 'chothia' },
 ];
+
+watchEffect(() => {
+  if (app.model.args.anchorRef === undefined) {
+    app.model.args.numberingScheme = undefined;
+  }
+});
 
 function setDataset(ref: PlRef | undefined) {
   app.model.args.anchorRef = ref;
