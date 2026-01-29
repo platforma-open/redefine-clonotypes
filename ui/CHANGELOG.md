@@ -1,5 +1,13 @@
 # @platforma-open/milaboratories.redefine-clonotypes.ui
 
+## 1.3.1
+
+### Patch Changes
+
+- 7469b2a: Improve block label generation
+- Updated dependencies [7469b2a]
+  - @platforma-open/milaboratories.redefine-clonotypes.model@1.3.1
+
 ## 1.3.0
 
 ### Minor Changes
