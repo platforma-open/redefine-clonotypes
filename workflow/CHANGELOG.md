@@ -1,5 +1,19 @@
 # @platforma-open/milaboratories.redefine-clonotypes.workflow
 
+## 1.4.0
+
+### Minor Changes
+
+- 1d0b72a: IMGT, Kabat and Chothia numbering schemes added, dependencies updates
+- ba2cf30: numbering schemas and dependencies updates
+
+### Patch Changes
+
+- Updated dependencies [1d0b72a]
+- Updated dependencies [ba2cf30]
+  - @platforma-open/milaboratories.redefine-clonotypes.anarci-numbering@1.1.0
+  - @platforma-open/milaboratories.redefine-clonotypes.assembling-fasta@1.1.0
+
 ## 1.3.1
 
 ### Patch Changes

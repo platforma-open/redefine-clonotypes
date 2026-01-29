@@ -1,5 +1,18 @@
 # @platforma-open/milaboratories.redefine-clonotypes.ui
 
+## 1.3.0
+
+### Minor Changes
+
+- 1d0b72a: IMGT, Kabat and Chothia numbering schemes added, dependencies updates
+- ba2cf30: numbering schemas and dependencies updates
+
+### Patch Changes
+
+- Updated dependencies [1d0b72a]
+- Updated dependencies [ba2cf30]
+  - @platforma-open/milaboratories.redefine-clonotypes.model@1.3.0
+
 ## 1.2.3
 
 ### Patch Changes
