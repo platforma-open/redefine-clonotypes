@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 import re
 from typing import Dict, List, Optional, Tuple
@@ -6,6 +7,7 @@ from typing import Dict, List, Optional, Tuple
 import polars as pl
 
 REGIONS = ["FR1", "CDR1", "FR2", "CDR2", "FR3", "CDR3", "FR4"]
+CDR_REGIONS = ["CDR1", "CDR2", "CDR3"]
 
 REGION_RANGES = {
     "imgt": {
@@ -118,6 +120,95 @@ def region_for_pos(num: int, ranges: Dict[str, Tuple[int, int]]) -> Optional[str
     return None
 
 
+def parse_mapping(mapping_raw: Optional[str]) -> Optional[Dict[str, str]]:
+    if not mapping_raw:
+        return None
+    try:
+        mapping = json.loads(mapping_raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(mapping, dict):
+        return None
+    return {str(k): str(v) for k, v in mapping.items()}
+
+
+def base36_encode(n: int) -> str:
+    digits = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    if n == 0:
+        return "0"
+    s = ""
+    while n > 0:
+        n, r = divmod(n, 36)
+        s = digits[r] + s
+    return s
+
+
+def aligned_sequence(residues: List[str]) -> str:
+    aligned = []
+    for res in residues:
+        res = (res or "").strip()
+        aligned.append("-" if res in {"", "-", "."} else res)
+    return "".join(aligned)
+
+
+def cdr_boundaries(
+    pos_labels: List[str],
+    ranges: Dict[str, Tuple[int, int]],
+) -> Dict[str, Optional[Tuple[int, int]]]:
+    boundaries: Dict[str, Optional[Tuple[int, int]]] = {r: None for r in CDR_REGIONS}
+    for region in CDR_REGIONS:
+        start = None
+        end = None
+        r_start, r_end = ranges[region]
+        for idx, label in enumerate(pos_labels):
+            num = position_number(label)
+            if num is None or num < r_start or num > r_end:
+                continue
+            if start is None:
+                start = idx
+            end = idx
+        if start is not None and end is not None:
+            boundaries[region] = (start, end + 1)  # end is exclusive
+    return boundaries
+
+
+def encode_cdr_annotations(
+    aligned: str,
+    boundaries: Dict[str, Optional[Tuple[int, int]]],
+    mapping: Dict[str, str],
+) -> str:
+    if not aligned or not mapping:
+        return ""
+    region_to_code: Dict[str, str] = {}
+    for code, label in mapping.items():
+        norm = str(label or "").strip().upper()
+        if norm in CDR_REGIONS and norm not in region_to_code:
+            region_to_code[norm] = str(code)
+
+    segments = []
+    seen = set()
+    for region in CDR_REGIONS:
+        code = region_to_code.get(region)
+        bounds = boundaries.get(region)
+        if code is None or bounds is None:
+            continue
+        start_aln, end_aln = bounds
+        gaps_before = aligned[:start_aln].count("-")
+        gaps_in_range = aligned[start_aln:end_aln].count("-")
+        start_ungapped = start_aln - gaps_before
+        length_ungapped = (end_aln - start_aln) - gaps_in_range
+        if length_ungapped <= 0:
+            continue
+        key = (code, start_ungapped, length_ungapped)
+        if key in seen:
+            continue
+        seen.add(key)
+        segments.append((start_ungapped, f"{code}:{base36_encode(start_ungapped)}+{base36_encode(length_ungapped)}"))
+
+    segments.sort(key=lambda x: x[0])
+    return "|".join(seg for _, seg in segments)
+
+
 def build_regions(
     pos_labels: List[str],
     residues: List[str],
@@ -185,6 +276,8 @@ def main() -> None:
     p.add_argument("--scheme", required=True, choices=["imgt", "kabat", "chothia"], help="Numbering scheme")
     p.add_argument("--h_csv", required=False, help="Path to H chain ANARCI CSV")
     p.add_argument("--kl_csv", required=False, help="Path to KL chain ANARCI CSV")
+    p.add_argument("--cdr_mapping_h", required=False, help="CDR annotation mapping JSON for heavy chain")
+    p.add_argument("--cdr_mapping_kl", required=False, help="CDR annotation mapping JSON for light chain")
     p.add_argument("--out_tsv", required=True, help="Output TSV path")
     args = p.parse_args()
 
@@ -197,11 +290,18 @@ def main() -> None:
     anarci_kl, pos_kl = load_anarci_csv(args.kl_csv)
     anarci_by_chain = {"H": (anarci_h, pos_h), "KL": (anarci_kl, pos_kl)}
 
+    cdr_mapping_by_chain = {
+        "H": parse_mapping(args.cdr_mapping_h),
+        "KL": parse_mapping(args.cdr_mapping_kl),
+    }
+
     cols = ["clonotypeKey"]
     for chain in chains:
         for region in REGIONS:
             cols.append(f"{args.scheme}_{region}_aa_{chain}")
             cols.append(f"{args.scheme}_{region}_nt_{chain}")
+        if cdr_mapping_by_chain.get(chain):
+            cols.append(f"cdrs_annotations_{chain}")
 
     data: List[List[str]] = []
     for key in keys:
@@ -214,6 +314,8 @@ def main() -> None:
 
             if residues is None:
                 row.extend([""] * (len(REGIONS) * 2))
+                if cdr_mapping_by_chain.get(chain):
+                    row.append("")
                 continue
 
             nt_seq = seqs.get(key, {}).get(chain, {}).get("nt", "")
@@ -222,6 +324,10 @@ def main() -> None:
             for region in REGIONS:
                 row.append(aa_regions.get(region, ""))
                 row.append(nt_regions.get(region, ""))
+            if cdr_mapping_by_chain.get(chain):
+                aligned = aligned_sequence(residues)
+                boundaries = cdr_boundaries(pos_labels, ranges)
+                row.append(encode_cdr_annotations(aligned, boundaries, cdr_mapping_by_chain[chain]))
         data.append(row)
 
     pl.DataFrame(data, schema=cols).write_csv(args.out_tsv, separator="\t")

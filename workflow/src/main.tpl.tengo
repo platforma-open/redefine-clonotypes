@@ -134,6 +134,43 @@ wf.body(func(args) {
 	cdr3HasNt := {}
 	useCdr3Numbering := false
 	existingSeqKeys := {}
+	cdrAnnotationHeaderChain := {}
+	cdrAnnotationMappingByChain := {}
+	cdrAnnotationMappingDefault := undefined
+	cdrAnnotationAvailableByChain := {}
+	hasCdrAnnotationColumns := false
+	bulkNumberingChain := undefined
+
+	for i, col in propertyCols {
+		if col.spec.name != "pl7.app/vdj/sequence/annotation" { continue }
+		if col.spec.domain["pl7.app/sequence/annotation/type"] != "CDRs" { continue }
+		hasCdrAnnotationColumns = true
+		header := "property_" + i
+		chainKey := undefined
+		if isSingleCell {
+			scChain := col.spec.domain["pl7.app/vdj/scClonotypeChain"]
+			chainKey = scChain == "A" ? "H" : scChain == "B" ? "KL" : undefined
+		} else {
+			chainDomain := col.spec.domain["pl7.app/vdj/chain"]
+			if chainDomain == undefined {
+				chainDomain = col.spec.axesSpec[0].domain["pl7.app/vdj/chain"]
+			}
+			chainKey = chainDomain == "IGHeavy" ? "H" : chainDomain == "IGLight" ? "KL" : undefined
+		}
+		if chainKey != undefined {
+			cdrAnnotationHeaderChain[header] = chainKey
+		}
+		mapping := col.spec.annotations["pl7.app/sequence/annotation/mapping"]
+		if mapping != undefined && mapping != "" {
+			if chainKey != undefined {
+				if is_undefined(cdrAnnotationMappingByChain[chainKey]) {
+					cdrAnnotationMappingByChain[chainKey] = mapping
+				}
+			} else if cdrAnnotationMappingDefault == undefined {
+				cdrAnnotationMappingDefault = mapping
+			}
+		}
+	}
 
 	// Anonymize sampleId axis (index 0)
 	dataToAnonymize := {}
@@ -258,13 +295,23 @@ wf.body(func(args) {
 			if !isSingleCell {
 				bulkChain = hasH ? "H" : "KL"
 			}
+			bulkNumberingChain = bulkChain
+
+			cdrMappingH := cdrAnnotationMappingByChain["H"]
+			cdrMappingKL := cdrAnnotationMappingByChain["KL"]
+			if cdrMappingH == undefined { cdrMappingH = cdrAnnotationMappingDefault }
+			if cdrMappingKL == undefined { cdrMappingKL = cdrAnnotationMappingDefault }
+			if cdrMappingH != undefined { cdrAnnotationAvailableByChain["H"] = true }
+			if cdrMappingKL != undefined { cdrAnnotationAvailableByChain["KL"] = true }
 
 			numbering := render.create(numberingTpl, {
 				inputAaTsv: numberingAaTsv,
 				inputTsv: numberingInputTsv,
 				scheme: numberingScheme,
 				isSingleCell: isSingleCell,
-				bulkChain: bulkChain
+				bulkChain: bulkChain,
+				cdrMappingH: cdrMappingH,
+				cdrMappingKL: cdrMappingKL
 			})
 			numberingTsv = numbering.output("numbered", 24 * 60 * 60 * 1000)
 		}
@@ -321,12 +368,12 @@ wf.body(func(args) {
 						domain: {
 							"pl7.app/vdj/feature": region,
 							"pl7.app/vdj/chain": chainDomain,
-							"pl7.app/alphabet": alphabet,
-							"pl7.app/vdj/numberingScheme": numberingScheme
+							"pl7.app/alphabet": alphabet
 						},
 						annotations: {
 							"pl7.app/label": numberingLabels[header],
-							"pl7.app/table/visibility": "optional"
+							"pl7.app/table/visibility": "optional",
+							"pl7.app/vdj/numberingSchema": numberingScheme
 						}
 					}
 				}
@@ -342,12 +389,12 @@ wf.body(func(args) {
 						domain: {
 							"pl7.app/vdj/feature": feature,
 							"pl7.app/vdj/chain": chainDomain,
-							"pl7.app/alphabet": alphabet,
-							"pl7.app/vdj/numberingScheme": numberingScheme
+							"pl7.app/alphabet": alphabet
 						},
 						annotations: {
 							"pl7.app/label": numberingLabels[header],
-							"pl7.app/table/visibility": "optional"
+							"pl7.app/table/visibility": "optional",
+							"pl7.app/vdj/numberingSchema": numberingScheme
 						}
 					}
 				}
@@ -671,6 +718,21 @@ wf.body(func(args) {
 	for h, _ in propertyHeaders {
 		col := propertyHeaders[h]
 		useNumbered := false
+		if numberingDf != undefined && hasCdrAnnotationColumns && col.spec.name == "pl7.app/vdj/sequence/annotation" {
+			if col.spec.domain["pl7.app/sequence/annotation/type"] == "CDRs" {
+				chainKey := cdrAnnotationHeaderChain[h]
+				if chainKey == undefined && !isSingleCell {
+					chainKey = bulkNumberingChain
+				}
+				if chainKey != undefined && !is_undefined(cdrAnnotationAvailableByChain[chainKey]) {
+					annHeader := "cdrs_annotations_" + chainKey
+					aggExpressions = append(aggExpressions,
+						pt.col(annHeader).maxBy(pt.col(mainAbundanceHeader)).alias(h)
+					)
+					useNumbered = true
+				}
+			}
+		}
 		if numberingEnabled && col.spec.name == "pl7.app/vdj/sequence" {
 			feature := col.spec.domain["pl7.app/vdj/feature"]
 			isNumberedFeature := false
@@ -856,6 +918,22 @@ wf.body(func(args) {
 	for header, col in propertyHeaders {
 		newSpec :=	maps.clone(col.spec)
 		delete(newSpec, "axesSpec")
+		if numberingEnabled && col.spec.name == "pl7.app/vdj/sequence" {
+			feature := col.spec.domain["pl7.app/vdj/feature"]
+			if useCdr3Numbering {
+				if feature == "CDR3" || feature == "FR4" || feature == "FR4InFrame" {
+					newSpec.annotations = maps.merge(newSpec.annotations, {
+						"pl7.app/vdj/numberingSchema": numberingScheme
+					})
+				}
+			} else {
+				if feature == "VDJRegion" || feature == "VDJRegionInFrame" || feature == "FR4InFrame" || slices.hasElement(numberingRegions, feature) {
+					newSpec.annotations = maps.merge(newSpec.annotations, {
+						"pl7.app/vdj/numberingSchema": numberingScheme
+					})
+				}
+			}
+		}
 
 		newPropertyColumns = append(newPropertyColumns, { column: header, spec: newSpec })
 	}

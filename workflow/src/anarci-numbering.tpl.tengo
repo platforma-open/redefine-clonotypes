@@ -14,6 +14,8 @@ self.body(func(inputs) {
     scheme := inputs.scheme
     isSingleCell := inputs.isSingleCell
     bulkChain := inputs.bulkChain
+    cdrMappingH := inputs.cdrMappingH
+    cdrMappingKL := inputs.cdrMappingKL
 
     fastaCmd := exec.builder().
         software(fastaSw).
@@ -54,6 +56,12 @@ self.body(func(inputs) {
         addFile("input.tsv", inputTsv).
         arg("--input_tsv").arg("input.tsv").
         arg("--scheme").arg(scheme)
+    if cdrMappingH != undefined && cdrMappingH != "" {
+        numberingExec = numberingExec.arg("--cdr_mapping_h").arg(cdrMappingH)
+    }
+    if cdrMappingKL != undefined && cdrMappingKL != "" {
+        numberingExec = numberingExec.arg("--cdr_mapping_kl").arg(cdrMappingKL)
+    }
     if isSingleCell {
         numberingExec = numberingExec.
             addFile("anarci.csv_H.csv", anarciBuilder.getFile("anarci.csv_H.csv")).
