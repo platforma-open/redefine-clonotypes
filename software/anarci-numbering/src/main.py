@@ -279,6 +279,7 @@ def main() -> None:
     p.add_argument("--cdr_mapping_h", required=False, help="CDR annotation mapping JSON for heavy chain")
     p.add_argument("--cdr_mapping_kl", required=False, help="CDR annotation mapping JSON for light chain")
     p.add_argument("--out_tsv", required=True, help="Output TSV path")
+    p.add_argument("--out_cdr3_positions_tsv", required=False, help="Output TSV with Kabat CDR3 positions")
     args = p.parse_args()
 
     keys, seqs, fields = read_input_tsv(args.input_tsv)
@@ -331,6 +332,32 @@ def main() -> None:
         data.append(row)
 
     pl.DataFrame(data, schema=cols).write_csv(args.out_tsv, separator="\t")
+
+    if args.out_cdr3_positions_tsv:
+        preferred_chain = "H" if "H" in chains else ("KL" if "KL" in chains else None)
+        pos_rows: List[List[str]] = []
+        if preferred_chain:
+            anarci_rows, pos_labels = anarci_by_chain.get(preferred_chain, ({}, []))
+            if pos_labels:
+                ranges = REGION_RANGES[args.scheme][preferred_chain]
+                start, end = ranges["CDR3"]
+                for key, residues in anarci_rows.items():
+                    if not residues:
+                        continue
+                    for label, residue in zip(pos_labels, residues):
+                        residue = (residue or "").strip()
+                        num = position_number(label)
+                        if num is None or num < start or num > end:
+                            continue
+                        if residue in {"", "-", "."}:
+                            residue = "Gap"
+                        pos_rows.append([key, label, residue])
+        pl.DataFrame(pos_rows, schema=["clonotypeKey", "numberingPosition", "aminoacid"]).with_columns(
+            pl.lit(1).alias("aminoacidCount"),
+        ).write_csv(
+            args.out_cdr3_positions_tsv,
+            separator="\t",
+        )
 
 
 if __name__ == "__main__":

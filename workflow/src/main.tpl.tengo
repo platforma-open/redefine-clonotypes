@@ -121,10 +121,13 @@ wf.body(func(args) {
 	numberingRegions := ["FR1", "CDR1", "FR2", "CDR2", "FR3", "CDR3", "FR4"]
 	numberingScheme := args.numberingScheme
 	numberingEnabled := numberingScheme != undefined
+	exportKabatCdr3AaPositions := args.exportKabatCdr3AaPositions == true
 	numberingHeaders := []
 	numberingSpecs := {}
 	numberingLabels := {}
 	numberingTsv := undefined
+	cdr3PositionsTsv := undefined
+	cdr3PositionsWithSampleTsv := undefined
 	numberingChains := []
 	numberingChainSet := {}
 	cdr3Tsv := undefined
@@ -311,9 +314,13 @@ wf.body(func(args) {
 				isSingleCell: isSingleCell,
 				bulkChain: bulkChain,
 				cdrMappingH: cdrMappingH,
-				cdrMappingKL: cdrMappingKL
+				cdrMappingKL: cdrMappingKL,
+				exportCdr3Positions: exportKabatCdr3AaPositions && numberingScheme == "kabat"
 			})
 			numberingTsv = numbering.output("numbered", 24 * 60 * 60 * 1000)
+			if exportKabatCdr3AaPositions && numberingScheme == "kabat" {
+				cdr3PositionsTsv = numbering.output("cdr3Positions", 24 * 60 * 60 * 1000)
+			}
 		}
 
 		if useCdr3Numbering {
@@ -714,6 +721,11 @@ wf.body(func(args) {
 		}
 	}
 
+	if cdr3PositionsTsv != undefined {
+		cdr3PositionsDf := ptWf.frame(cdr3PositionsTsv, {xsvType: "tsv"})
+		cdr3PositionsDf.save("cdr3_positions.tsv")
+	}
+
 	aggExpressions := []
 	for h, _ in propertyHeaders {
 		col := propertyHeaders[h]
@@ -728,6 +740,39 @@ wf.body(func(args) {
 					annHeader := "cdrs_annotations_" + chainKey
 					aggExpressions = append(aggExpressions,
 						pt.col(annHeader).maxBy(pt.col(mainAbundanceHeader)).alias(h)
+					)
+					useNumbered = true
+				}
+			}
+		}
+		if numberingEnabled && col.spec.name == "pl7.app/vdj/sequenceLength" && col.spec.domain["pl7.app/vdj/feature"] == "CDR3" {
+			chain := undefined
+			if isSingleCell {
+				receptor := col.spec.axesSpec[0].domain["pl7.app/vdj/receptor"]
+				if receptor == "IG" {
+					index := col.spec.domain["pl7.app/vdj/scClonotypeChain/index"]
+					if index == "primary" {
+						scChain := col.spec.domain["pl7.app/vdj/scClonotypeChain"]
+						chain = scChain == "A" ? "IGHeavy" : scChain == "B" ? "IGLight" : undefined
+					}
+				}
+			} else {
+				chain = col.spec.axesSpec[0].domain["pl7.app/vdj/chain"]
+				if chain == undefined { chain = col.spec.domain["pl7.app/vdj/chain"] }
+			}
+			alphabet := col.spec.domain["pl7.app/alphabet"]
+			chainKey := chain == "IGHeavy" ? "H" : chain == "IGLight" ? "KL" : undefined
+			if chainKey != undefined && (alphabet == "aminoacid" || alphabet == "nucleotide") {
+				if useCdr3Numbering {
+					trimHeader := "cdr3_trim_" + (alphabet == "aminoacid" ? "aa" : "nt") + "_" + chainKey
+					aggExpressions = append(aggExpressions,
+						pt.col(trimHeader).strLenChars().maxBy(pt.col(mainAbundanceHeader)).alias(h)
+					)
+					useNumbered = true
+				} else if numberingDf != undefined {
+					headerNum := numberingScheme + "_CDR3_" + (alphabet == "aminoacid" ? "aa" : "nt") + "_" + chainKey
+					aggExpressions = append(aggExpressions,
+						pt.col(headerNum).strLenChars().maxBy(pt.col(mainAbundanceHeader)).alias(h)
 					)
 					useNumbered = true
 				}
@@ -798,6 +843,9 @@ wf.body(func(args) {
 	finalAbundancesTsvRaw := ptResult.getFile("abundances.tsv")
 	finalPropertiesTsv := ptResult.getFile("properties.tsv")
 	statsTsvContent := ptResult.getFileContent("stats.tsv")
+	if cdr3PositionsTsv != undefined {
+		cdr3PositionsWithSampleTsv = ptResult.getFile("cdr3_positions.tsv")
+	}
 
 	// Deanonymize abundances
 	abundancesDeanonimization := render.createEphemeral(
@@ -808,6 +856,8 @@ wf.body(func(args) {
 		}
 	)
 	finalAbundancesTsv := abundancesDeanonimization.output("deanonimizedTsv")
+
+	// No sampleId axis for Kabat positions, skip deanonimization
 
 
 	// --- Construct specs ---
@@ -828,12 +878,31 @@ wf.body(func(args) {
 		label: traceLabel
 	})
 
-	newClonotypeKeySpec := maps.clone(clonotypeKeyAxisSpec)
-	newClonotypeKeySpec.domain = maps.merge(newClonotypeKeySpec.domain, {
-		"pl7.app/redefined-by": blockId,
-		"pl7.app/vdj/clonotypeKey/structure": text.join(definitionLabels, "-") // override structure
-	})
+	clonotypeKeyDomain := {}
+	clonotypingRunId := clonotypeKeyAxisSpec.domain["pl7.app/vdj/clonotypingRunId"]
+	chainDomain := clonotypeKeyAxisSpec.domain["pl7.app/vdj/chain"]
+	if !is_undefined(clonotypingRunId) {
+		clonotypeKeyDomain["pl7.app/vdj/clonotypingRunId"] = clonotypingRunId
+	}
+	if !is_undefined(chainDomain) {
+		clonotypeKeyDomain["pl7.app/vdj/chain"] = chainDomain
+	}
+	clonotypeKeyDomain["pl7.app/vdj/redefined-by"] = blockId
+	clonotypeKeyDomain["pl7.app/vdj/clonotypeKey/structure"] = text.join(definitionLabels, "-")
 
+	newClonotypeKeySpec := {
+		name: clonotypeKeyAxisSpec.name,
+		type: clonotypeKeyAxisSpec.type,
+		annotations: {
+			"pl7.app/label": "Clonotype ID",
+			"pl7.app/segmentedBy": "[\"pl7.app/vdj/clonotypingRunId\"]",
+			"pl7.app/table/fontFamily": "monospace",
+			"pl7.app/table/orderPriority": "110000",
+			"pl7.app/table/visibility": "default"
+		},
+		domain: json.decode(canonical.encode(clonotypeKeyDomain))
+	}
+	ll.print("__THE_LOG__ newClonotypeKeySpec: " + json.encode(newClonotypeKeySpec))
 	abundanceAxes := [
 		{
 			column: "sampleId",	
@@ -944,23 +1013,128 @@ wf.body(func(args) {
 		storageFormat: "Parquet",
 		partitionKeyLength: 0
 	}, { splitDataAndSpec: true })
+
+	cdr3PositionsRaw := undefined
+	cdr3PositionsPf := undefined
+	if cdr3PositionsWithSampleTsv != undefined {
+		numberingPositionAxisSpec := {
+			name: "pl7.app/vdj/numberingPosition",
+			type: "String",
+			domain: {
+				"pl7.app/vdj/feature": "CDR3",
+				"pl7.app/vdj/numberingSchema": "kabat"
+			},
+			annotations: {
+				"pl7.app/label": "Kabat CDR3 numbering position"
+			}
+		}
+			cdr3PositionsAxes := [{
+			column: "newClonotypeKey",
+			spec: newClonotypeKeySpec
+		    },
+		    {
+			column: "numberingPosition",
+			spec: numberingPositionAxisSpec
+		    }
+	    ]
+		aminoacidColumnSpec := {
+			name: "pl7.app/aminoacid",
+			valueType: "String",
+			domain: {
+				"pl7.app/alphabet": "aminoacid"
+			},
+			annotations: {
+				"pl7.app/label": "Kabat CDR3 amino acid",
+				"pl7.app/vdj/numberingSchema": "kabat",
+				"pl7.app/vdj/feature": "CDR3"
+			}
+		}
+		aminoacidCountColumnSpec := {
+			name: "pl7.app/aminoacidCount",
+			valueType: "Float",
+			domain: {
+				"pl7.app/alphabet": "aminoacid"
+			},
+			annotations: {
+				"pl7.app/label": "Kabat CDR3 amino acid count",
+				"pl7.app/vdj/numberingSchema": "kabat",
+				"pl7.app/vdj/feature": "CDR3"
+			}
+		}
+		cdr3PositionsRaw = xsv.importFile(cdr3PositionsWithSampleTsv, "tsv", {
+			axes: cdr3PositionsAxes,
+			columns: [
+				{ column: "aminoacid", spec: aminoacidColumnSpec },
+				{ column: "aminoacidCount", spec: aminoacidCountColumnSpec }
+			],
+			storageFormat: "Parquet",
+			partitionKeyLength: 0
+		}, { splitDataAndSpec: true })
 	
+	}
+	
+
+	reorderDomainMap := func(domainMap) {
+		if domainMap == undefined { return domainMap }
+		ordered := {}
+		keys := maps.getKeys(domainMap)
+		for _, k in keys {
+			if k == "pl7.app/redefined-by" { continue }
+			ordered[k] = domainMap[k]
+		}
+		if !is_undefined(domainMap["pl7.app/redefined-by"]) {
+			ordered["pl7.app/redefined-by"] = domainMap["pl7.app/redefined-by"]
+		}
+		return ordered
+	}
+
+	normalizeAxisSpecDomain := func(axisSpec) {
+		if axisSpec == undefined { return axisSpec }
+		normalized := maps.clone(axisSpec)
+		if normalized.domain != undefined {
+			normalized.domain = reorderDomainMap(normalized.domain)
+		}
+		return normalized
+	}
+
+	normalizeSpecAxisDomains := func(spec) {
+		if spec == undefined { return spec }
+		normalized := maps.clone(spec)
+		if normalized.axesSpec != undefined {
+			axes := []
+			for _, ax in normalized.axesSpec {
+				axes = append(axes, normalizeAxisSpecDomain(ax))
+			}
+			normalized.axesSpec = axes
+		}
+		return normalized
+	}
 
 	pfBuilder := pframes.pFrameBuilder()
 	for k, v in abundancePf {
-		pfBuilder.add(k, trace.inject(v.spec), v.data)
+		pfBuilder.add(k, v.spec, v.data)
 	}
 	for k, v in propertyPf {
-		pfBuilder.add(k, trace.inject(v.spec), v.data)
+		pfBuilder.add(k, normalizeSpecAxisDomains(trace.inject(v.spec)), v.data)
+	}
+	if cdr3PositionsRaw != undefined {
+		for k, v in cdr3PositionsRaw {
+			pfBuilder.add(k, v.spec, v.data)
+		}
 	}
 	finalPf := pfBuilder.build()
+
+	exports := {
+		pf: finalPf
+	}
+	if cdr3PositionsPf != undefined {
+		exports.kabatCdr3AaPositions = cdr3PositionsPf
+	}
 
 	return {
 		outputs: {
 			statsTsvContent: statsTsvContent
 		},
-		exports: {
-			pf: finalPf
-		}
+		exports: exports
 	}
 })

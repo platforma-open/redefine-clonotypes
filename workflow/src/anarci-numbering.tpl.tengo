@@ -6,7 +6,7 @@ anarciSw := assets.importSoftware("@platforma-open/milaboratories.software-anarc
 fastaSw := assets.importSoftware("@platforma-open/milaboratories.redefine-clonotypes.assembling-fasta:main")
 numberingSw := assets.importSoftware("@platforma-open/milaboratories.redefine-clonotypes.anarci-numbering:main")
 
-self.defineOutputs("numbered")
+self.defineOutputs("numbered", "cdr3Positions")
 
 self.body(func(inputs) {
     inputAaTsv := inputs.inputAaTsv
@@ -16,6 +16,7 @@ self.body(func(inputs) {
     bulkChain := inputs.bulkChain
     cdrMappingH := inputs.cdrMappingH
     cdrMappingKL := inputs.cdrMappingKL
+    exportCdr3Positions := inputs.exportCdr3Positions == true
 
     fastaCmd := exec.builder().
         software(fastaSw).
@@ -79,14 +80,22 @@ self.body(func(inputs) {
                 arg("--kl_csv").arg("anarci.csv_KL.csv")
         }
     }
+    numberingExec = numberingExec.arg("--out_tsv").arg("numbered.tsv").saveFile("numbered.tsv")
+    if exportCdr3Positions {
+        numberingExec = numberingExec.
+            arg("--out_cdr3_positions_tsv").arg("cdr3_positions.tsv").
+            saveFile("cdr3_positions.tsv")
+    }
     numberingExec = numberingExec.
-        arg("--out_tsv").arg("numbered.tsv").
-        saveFile("numbered.tsv").
         printErrStreamToStdout().
         cache(24 * 60 * 60 * 1000).
         run()
 
-    return {
+    outputs := {
         numbered: numberingExec.getFile("numbered.tsv")
     }
+    if exportCdr3Positions {
+        outputs.cdr3Positions = numberingExec.getFile("cdr3_positions.tsv")
+    }
+    return outputs
 })

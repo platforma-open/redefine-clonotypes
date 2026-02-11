@@ -7,6 +7,7 @@ export type BlockArgs = {
   anchorRef?: PlRef;
   clonotypeDefinition: SUniversalPColumnId[];
   numberingScheme?: 'imgt' | 'kabat' | 'chothia';
+  exportKabatCdr3AaPositions?: boolean;
 };
 
 export const model = BlockModel.create()
@@ -15,6 +16,7 @@ export const model = BlockModel.create()
     defaultBlockLabel: 'Select Clonotype Definition',
     customBlockLabel: '',
     clonotypeDefinition: [],
+    exportKabatCdr3AaPositions: false,
   })
 
   .argsValid((ctx) => ctx.args.anchorRef !== undefined && (ctx.args.clonotypeDefinition?.length ?? 0) > 0)
