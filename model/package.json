@@ -20,7 +20,7 @@
     "build": "ts-builder build --target block-model && block-tools build-model",
     "watch": "ts-builder build --target block-model --watch",
     "lint": "eslint .",
-    "type-check": "ts-builder types --target block-model"
+    "type-check": "ts-builder type-check --target block-model"
   },
   "dependencies": {
     "@milaboratories/strings": "catalog:",

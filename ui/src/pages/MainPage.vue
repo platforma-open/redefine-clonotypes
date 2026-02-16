@@ -53,7 +53,13 @@ function setDataset(ref: PlRef | undefined) {
       :clearable="true"
     >
       <template #tooltip>
-        Apply IMGT, Kabat, or Chothia numbering. Available only for datasets with VDJRegion or VDJRegionInFrame features. Transformed features are used for clonotype definition.
+        Apply IMGT, Kabat, or Chothia numbering to sequences. This option is available if the input dataset contains assembling VDJRegion or main CDR3 sequences.
+        <br /><br />
+        When enabled:
+        <br />
+        • Clonotypes are grouped by gapped/aligned sequences (VDJRegions) or by original sequences (all other features).
+        <br />
+        • Output CDR3 sequences will be trimmed (anchor residues removed), while all other sequence features will be displayed as gapped/aligned sequences according to the selected scheme.
       </template>
     </PlDropdown>
 
