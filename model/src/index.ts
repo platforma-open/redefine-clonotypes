@@ -1,12 +1,13 @@
-import type { InferOutputsType, PlRef, SUniversalPColumnId } from '@platforma-sdk/model';
-import { BlockModel } from '@platforma-sdk/model';
 import strings from '@milaboratories/strings';
+import type { InferOutputsType, PlRef, SUniversalPColumnId } from '@platforma-sdk/model';
+import { BlockModel, isPColumnSpec } from '@platforma-sdk/model';
 import { getDefaultBlockLabel } from './label';
 
 export type BlockArgs = {
   defaultBlockLabel: string;
   customBlockLabel: string;
-  anchorRef?: PlRef;
+  mixcrRun?: PlRef;
+  selectedChains: PlRef[];
   clonotypeDefinition: SUniversalPColumnId[];
   numberingScheme?: 'imgt' | 'kabat' | 'chothia';
 };
@@ -16,13 +17,73 @@ export const model = BlockModel.create()
   .withArgs<BlockArgs>({
     defaultBlockLabel: getDefaultBlockLabel({ clonotypeDefinitionLabels: [] }),
     customBlockLabel: '',
+    selectedChains: [],
     clonotypeDefinition: [],
   })
 
-  .argsValid((ctx) => ctx.args.anchorRef !== undefined && (ctx.args.clonotypeDefinition?.length ?? 0) > 0)
+  .argsValid((ctx) => ctx.args.mixcrRun !== undefined && ctx.args.selectedChains.length > 0 && (ctx.args.clonotypeDefinition?.length ?? 0) > 0)
 
-  .output('datasetOptions', (ctx) =>
-    ctx.resultPool.getOptions([{
+  .output('mixcrRunOptions', (ctx) =>
+    ctx.resultPool.getOptions([
+      {
+        name: 'mixcr.com/clns', // The main clns file represents the run
+        annotations: { 'pl7.app/label': 'MiXCR Clonesets' },
+      },
+    ], {
+      label: { includeNativeLabel: false, forceTraceElements: ['milaboratories.samples-and-data/dataset'] }, // We'll rely on block label from trace if possible, or standard label
+    }),
+  )
+
+  .output('test', (ctx) => {
+    const run = ctx.args.mixcrRun;
+    if (run === undefined) return undefined;
+
+    // Get the run ID from the selected clns file
+    const runSpec = ctx.resultPool.getSpecByRef(run);
+    if (!runSpec) return undefined;
+
+    // The clns file usually has the run ID in its domain
+    const runId = runSpec.domain?.['pl7.app/vdj/clonotypingRunId'];
+    if (!runId) return undefined;
+
+    // Find all potential chain/isotype tables associated with this run
+    return ctx.resultPool.getOptions((spec) => {
+      if (!isPColumnSpec(spec)) return false;
+
+      // Check for run ID compatibility
+      if (spec.axesSpec[1]?.domain?.['pl7.app/vdj/clonotypingRunId'] !== runId) return false;
+
+      // Check for anchor annotation
+      if (spec.annotations?.['pl7.app/isAnchor'] !== 'true') return false;
+
+      // Check axes: must be sampleId + clonotypeKey
+      const axes = spec.axesSpec;
+      if (!axes || axes.length !== 2) return false;
+
+      const firstAxis = axes[0].name;
+      const secondAxis = axes[1].name;
+
+      return (
+        firstAxis === 'pl7.app/sampleId'
+        && (secondAxis === 'pl7.app/vdj/clonotypeKey' || secondAxis === 'pl7.app/vdj/scClonotypeKey')
+      );
+    }).map((opt) => ({ value: opt.ref, label: opt.label }));
+  })
+
+  .output('chainOptions', (ctx) => {
+    const run = ctx.args.mixcrRun;
+    if (run === undefined) return undefined;
+
+    // Get the run ID from the selected clns file
+    const runSpec = ctx.resultPool.getSpecByRef(run);
+    if (!runSpec) return undefined;
+
+    // Extract clonotypingRunId
+    const runId = runSpec.domain?.['pl7.app/vdj/clonotypingRunId'];
+    if (!runId) return undefined;
+
+    // Find all potential chain/isotype tables associated with this run
+    return ctx.resultPool.getOptions([{
       axes: [
         { name: 'pl7.app/sampleId' },
         { name: 'pl7.app/vdj/clonotypeKey' },
@@ -37,11 +98,22 @@ export const model = BlockModel.create()
     }],
     {
       label: { includeNativeLabel: false },
-    }),
-  )
+    })
+      .filter((opt) => {
+        const spec = ctx.resultPool.getSpecByRef(opt.ref);
+        if (!spec || !isPColumnSpec(spec)) return false;
+
+        // Check for run ID compatibility in the axis domain
+        if (spec.axesSpec[1]?.domain?.['pl7.app/vdj/clonotypingRunId'] !== runId) return false;
+
+        return true;
+      })
+      .map((opt) => ({ value: opt.ref, label: opt.label }));
+  })
 
   .output('clonotypeDefinitionOptions', (ctx) => {
-    const anchor = ctx.args.anchorRef;
+    // Use the first selected chain as reference for options
+    const anchor = ctx.args.selectedChains[0];
     if (anchor === undefined) return undefined;
 
     const isSingleCell = ctx.resultPool.getPColumnSpecByRef(anchor)?.axesSpec[1].name === 'pl7.app/vdj/scClonotypeKey';
@@ -67,7 +139,7 @@ export const model = BlockModel.create()
   })
 
   .output('numberingAvailable', (ctx) => {
-    const anchor = ctx.args.anchorRef;
+    const anchor = ctx.args.selectedChains[0];
     if (anchor === undefined) return false;
 
     const anchorSpec = ctx.resultPool.getPColumnSpecByRef(anchor);

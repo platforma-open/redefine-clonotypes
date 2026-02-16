@@ -1,28 +1,48 @@
 <script setup lang="ts">
 import type { PlRef } from '@platforma-sdk/model';
 import { PlAlert, PlBlockPage, PlDropdown, PlDropdownMulti, PlDropdownRef } from '@platforma-sdk/ui-vue';
-import { computed, watchEffect } from 'vue';
+import { computed, watch } from 'vue';
 import { useApp } from '../app';
 
 const app = useApp();
 
-const isValid = computed(() => app.model.args.anchorRef !== undefined && (app.model.args.clonotypeDefinition?.length ?? 0) > 0);
+const isValid = computed(() =>
+  app.model.args.mixcrRun !== undefined
+  && app.model.args.selectedChains.length > 0
+  && (app.model.args.clonotypeDefinition?.length ?? 0) > 0,
+);
+
 const numberingAvailable = computed(() => app.model.outputs.numberingAvailable === true);
-const numberingDisabled = computed(() => !app.model.args.anchorRef || !numberingAvailable.value);
+const numberingDisabled = computed(() => app.model.args.selectedChains.length === 0 || !numberingAvailable.value);
+
 const numberingSchemeOptions = [
   { label: 'IMGT', value: 'imgt' },
   { label: 'Kabat', value: 'kabat' },
   { label: 'Chothia', value: 'chothia' },
 ];
 
-watchEffect(() => {
-  if (app.model.args.anchorRef === undefined) {
+watch(() => app.model.args.mixcrRun, (newVal, oldVal) => {
+  if (newVal === undefined) {
+    app.model.args.selectedChains = [];
     app.model.args.numberingScheme = undefined;
+    app.model.args.clonotypeDefinition = [];
+  } else if (newVal !== oldVal) {
+    // Clear chains when run changes
+    app.model.args.selectedChains = [];
+    app.model.args.numberingScheme = undefined;
+    app.model.args.clonotypeDefinition = [];
   }
 });
 
-function setDataset(ref: PlRef | undefined) {
-  app.model.args.anchorRef = ref;
+// Auto-select chains when options become available and none are selected
+watch(() => app.model.outputs.chainOptions, (newOptions) => {
+  if (newOptions && newOptions.length > 0 && app.model.args.selectedChains.length === 0) {
+    app.model.args.selectedChains = newOptions.map((opt) => opt.value);
+  }
+});
+
+function setMixcrRun(ref: PlRef | undefined) {
+  app.model.args.mixcrRun = ref;
 }
 </script>
 
@@ -33,16 +53,24 @@ function setDataset(ref: PlRef | undefined) {
     title="Redefine Clonotypes"
   >
     <PlDropdownRef
-      v-model="app.model.args.anchorRef"
-      label="VDJ dataset"
-      :options="app.model.outputs.datasetOptions"
-      @update:model-value="setDataset"
+      v-model="app.model.args.mixcrRun"
+      label="MiXCR Run"
+      :options="app.model.outputs.mixcrRunOptions"
+      @update:model-value="setMixcrRun"
     />
+
+    <PlDropdownMulti
+      v-model="app.model.args.selectedChains"
+      label="Select Chains"
+      :options="app.model.outputs.chainOptions"
+      :disabled="!app.model.args.mixcrRun"
+    />
+
     <PlDropdownMulti
       v-model="app.model.args.clonotypeDefinition"
       label="New clonotype definition"
       :options="app.model.outputs.clonotypeDefinitionOptions"
-      :disabled="!app.model.args.anchorRef"
+      :disabled="app.model.args.selectedChains.length === 0"
     />
     <PlDropdown
       v-model="app.model.args.numberingScheme"
@@ -64,7 +92,7 @@ function setDataset(ref: PlRef | undefined) {
     </PlDropdown>
 
     <PlAlert v-if="!isValid" type="info">
-      Please select a VDJ dataset and a new clonotype definition.
+      Please select a MiXCR run, chains, and a new clonotype definition.
     </PlAlert>
     <div v-else-if="isValid && !app.model.outputs.isRunning" class="results">
       <h3>Results</h3>
