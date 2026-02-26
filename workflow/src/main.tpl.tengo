@@ -843,11 +843,11 @@ wf.body(func(args) {
 	})
 
 	newClonotypeKeySpec := maps.clone(clonotypeKeyAxisSpec)
-	structureKey := isSingleCell ? "pl7.app/vdj/scClonotypeKey/structure" : "pl7.app/vdj/clonotypeKey/structure"
 	newClonotypeKeySpec.domain = maps.merge(newClonotypeKeySpec.domain, {
 		"pl7.app/redefined-by": blockId
 	})
 	// Override structure key
+	structureKey := isSingleCell ? "pl7.app/vdj/scClonotypeKey/structure" : "pl7.app/vdj/clonotypeKey/structure"
 	newClonotypeKeySpec.domain[structureKey] = string(json.encode(definitionStructure))
 
 
