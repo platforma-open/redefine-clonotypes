@@ -46,6 +46,16 @@ addClonotypeLabelColumnsPt := func(df, clonotypeKeyCol, clonotypeLabelCol) {
     return df.withoutColumns(prefixTempCol, rankTempCol)
 }
 
+// Converts a column's name and its domain keys/values into a nested list format.
+// Needed to define the structure of a clonotype key.
+toCombinedDomainValue := func(spec) {
+    result := [spec.name]
+    // getKeys sort keys
+    for domain in maps.getKeys(spec.domain) {
+        result = append(result, [domain, spec.domain[domain]])
+    }
+    return result
+}
 
 wf.prepare(func(args) {
 	bundleBuilder := wf.createPBundleBuilder()
@@ -416,12 +426,14 @@ wf.body(func(args) {
 	definitionHeaders := []
 	definitionLabels := []
 	definitionHeaderSet := {}
-	appendDefinition := func(header, label) {
+	definitionStructure := []
+	appendDefinition := func(header, label, spec) {
 		if label == undefined { label = header }
 		if is_undefined(definitionHeaderSet[header]) {
 			definitionHeaderSet[header] = true
 			definitionHeaders = append(definitionHeaders, header)
 			definitionLabels = append(definitionLabels, label)
+			definitionStructure = append(definitionStructure, toCombinedDomainValue(spec))
 		}
 	}
 	for i, col in clonotypeDefinitionCols {
@@ -450,12 +462,12 @@ wf.body(func(args) {
 			chainKey := chain == "IGHeavy" ? "H" : chain == "IGLight" ? "KL" : undefined
 			if chainKey != undefined && (alphabet == "aminoacid" || alphabet == "nucleotide") {
 				headerNum := numberingScheme + "_" + feature + "_" + (alphabet == "aminoacid" ? "aa" : "nt") + "_" + chainKey
-				appendDefinition(headerNum, numberingLabels[headerNum])
+				appendDefinition(headerNum, numberingLabels[headerNum], numberingSpecs[headerNum])
 				useNumbered = true
 			}
 		}
 		if !useNumbered {
-			appendDefinition(header, label)
+			appendDefinition(header, label, col.spec)
 		}
 	}
 
@@ -465,6 +477,8 @@ wf.body(func(args) {
 	propertyTsvBuilder.setAxisHeader(clonotypeKeyAxisSpec, "clonotypeKey")
 	propertyHeaders := {}
 	for i, col in propertyCols {
+		// This block generates a new clone label column, so we skip the original one
+		if col.spec.name == "pl7.app/label" { continue }
 		header := "property_" + i
 		propertyHeaders[header] = col
 		propertyTsvBuilder.add(col, { header: header })
@@ -830,9 +844,12 @@ wf.body(func(args) {
 
 	newClonotypeKeySpec := maps.clone(clonotypeKeyAxisSpec)
 	newClonotypeKeySpec.domain = maps.merge(newClonotypeKeySpec.domain, {
-		"pl7.app/redefined-by": blockId,
-		"pl7.app/vdj/clonotypeKey/structure": text.join(definitionLabels, "-") // override structure
+		"pl7.app/redefined-by": blockId
 	})
+	// Override structure key
+	structureKey := isSingleCell ? "pl7.app/vdj/scClonotypeKey/structure" : "pl7.app/vdj/clonotypeKey/structure"
+	newClonotypeKeySpec.domain[structureKey] = string(json.encode(definitionStructure))
+
 
 	abundanceAxes := [
 		{
@@ -858,13 +875,31 @@ wf.body(func(args) {
 
 		newSpecNormalized := maps.clone(newSpecUnnormalized)
 		unit := newSpecNormalized.annotations["pl7.app/abundance/unit"]
-		normalizedLabel := unit == "molecules" ? "UMI Fraction" : unit == "reads" ? "Read Fraction" : "Normalized Abundance"
 		
 		// Set normalized-specific spec name
-		normalizedSpecName := unit == "molecules" ? "pl7.app/vdj/uniqueMoleculeFraction" : unit == "reads" ? "pl7.app/vdj/readFraction" : newSpecNormalized.name + "Normalized"
+		normalizedSpecName := ""
+		if unit == "molecules" {
+			normalizedSpecName = "pl7.app/vdj/uniqueMoleculeFraction"
+		} else if unit == "reads" {
+			normalizedSpecName = "pl7.app/vdj/readFraction"
+		} else if unit == "cells" {
+			normalizedSpecName = "pl7.app/vdj/uniqueCellFraction"
+		} else {
+			normalizedSpecName = newSpecNormalized.name + "Normalized"
+		}
 		newSpecNormalized.name = normalizedSpecName
-		
+
 		// Set normalized-specific annotations
+		normalizedLabel := ""
+		if unit == "molecules" {
+			normalizedLabel = "Fraction of UMIs"
+		} else if unit == "reads" {
+			normalizedLabel = "Fraction of reads"
+		} else if unit == "cells" {
+			normalizedLabel = "Fraction of Cells"
+		} else {
+			normalizedLabel = "Normalized Abundance"
+		}
 		normalizedAnnotations := {
 			"pl7.app/abundance/normalized": "true",
 			"pl7.app/label": normalizedLabel,
@@ -911,7 +946,11 @@ wf.body(func(args) {
 		spec: {
 			name: "pl7.app/label",
 			valueType: "String",
-			annotations: {"pl7.app/label": "Clonotype Label"}
+			annotations: {
+				"pl7.app/label": "Clone label",
+				"pl7.app/table/orderPriority": "100000",
+				"pl7.app/table/visibility": "optional"
+			}
 		}
 	}]
 

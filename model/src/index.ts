@@ -1,6 +1,6 @@
+import strings from '@milaboratories/strings';
 import type { InferOutputsType, PlRef, SUniversalPColumnId } from '@platforma-sdk/model';
 import { BlockModel } from '@platforma-sdk/model';
-import strings from '@milaboratories/strings';
 import { getDefaultBlockLabel } from './label';
 
 export type BlockArgs = {
@@ -21,8 +21,8 @@ export const model = BlockModel.create()
 
   .argsValid((ctx) => ctx.args.anchorRef !== undefined && (ctx.args.clonotypeDefinition?.length ?? 0) > 0)
 
-  .output('datasetOptions', (ctx) =>
-    ctx.resultPool.getOptions([{
+  .output('datasetOptions', (ctx) => {
+    const options = ctx.resultPool.getOptions([{
       axes: [
         { name: 'pl7.app/sampleId' },
         { name: 'pl7.app/vdj/clonotypeKey' },
@@ -37,8 +37,13 @@ export const model = BlockModel.create()
     }],
     {
       label: { includeNativeLabel: false },
-    }),
-  )
+    });
+
+    return options.filter((option) => {
+      const spec = ctx.resultPool.getPColumnSpecByRef(option.ref);
+      return spec?.axesSpec[1]?.domain?.['pl7.app/redefined-by'] === undefined;
+    });
+  })
 
   .output('clonotypeDefinitionOptions', (ctx) => {
     const anchor = ctx.args.anchorRef;
