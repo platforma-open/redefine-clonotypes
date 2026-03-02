@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.redefine-clonotypes.test
 
+## 1.3.0
+
+### Minor Changes
+
+- 57b0cea: Harmonize labels
+
 ## 1.2.0
 
 ### Minor Changes
