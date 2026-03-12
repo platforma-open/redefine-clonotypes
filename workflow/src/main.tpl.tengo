@@ -95,6 +95,12 @@ wf.prepare(func(args) {
 		domain: { "pl7.app/vdj/feature": "CDR3" }
 	}, "cdr3MainSeqs")
 
+	// Detect scFv sequences to identify scFv mode
+	bundleBuilder.addMulti({
+		axes: [{ anchor: "main", idx: 1 }],
+		name: "pl7.app/vdj/scFv-sequence"
+	}, "scFvSeqs")
+
 	return {
 		columns: bundleBuilder.build()
 	}
@@ -103,6 +109,7 @@ wf.prepare(func(args) {
 wf.body(func(args) {
 	columns := args.columns
 	blockId := wf.blockId().getDataAsJson()
+	anchorSpec := columns.getSpec(args.anchorRef)
 
 	abundanceCols := columns.getColumns("abundances")
 	propertyCols := columns.getColumns("properties")
@@ -200,6 +207,7 @@ wf.body(func(args) {
 	abundanceTsvBuilder.setAxisHeader(clonotypeKeyAxisSpec, "clonotypeKey")
 
 	if numberingEnabled {
+		///// Retrieve VDJRegion sequences (When available) /////
 		vdjRegionCols := columns.getColumns("vdjRegionSeqs")
 		allowedFeatures := { "VDJRegion": true, "VDJRegionInFrame": true }
 		aaByChain := {}
@@ -229,8 +237,43 @@ wf.body(func(args) {
 			}
 		}
 
+		///// Detect scFv mode /////
+		scFvCols := columns.getColumns("scFvSeqs")
+		isScFv := len(scFvCols) > 0
+
 		hasH := !is_undefined(aaByChain["H"])
 		hasKL := !is_undefined(aaByChain["KL"])
+
+		// In scFv mode, individual chain sequences are not marked as assembling features
+		// but are available in properties. We scan properties to find them.
+		if isScFv && (!hasH || !hasKL) {
+			for _, col in propertyCols {
+				if col.spec.name != "pl7.app/vdj/sequence" { continue }
+
+				feature := col.spec.domain["pl7.app/vdj/feature"]
+				if is_undefined(allowedFeatures[feature]) { continue }
+				
+				chain := undefined
+				// scFv is always single-cell
+				receptor := col.spec.axesSpec[0].domain["pl7.app/vdj/receptor"]
+				if receptor != "IG" { continue }
+				index := col.spec.domain["pl7.app/vdj/scClonotypeChain/index"]
+				if index != "primary" { continue }
+				scChain := col.spec.domain["pl7.app/vdj/scClonotypeChain"]
+				chain = scChain == "A" ? "IGHeavy" : scChain == "B" ? "IGLight" : undefined
+				
+				alphabet := col.spec.domain["pl7.app/alphabet"]
+				chainKey := chain == "IGHeavy" ? "H" : chain == "IGLight" ? "KL" : undefined
+				if chainKey == undefined { continue }
+				if alphabet == "aminoacid" && is_undefined(aaByChain[chainKey]) {
+					aaByChain[chainKey] = col
+				} else if alphabet == "nucleotide" && is_undefined(ntByChain[chainKey]) {
+					ntByChain[chainKey] = col
+				}
+			}
+			hasH = !is_undefined(aaByChain["H"])
+			hasKL = !is_undefined(aaByChain["KL"])
+		}
 
 		// CDR3-only fallback (main sequence)
 		cdr3Cols := columns.getColumns("cdr3MainSeqs")
@@ -260,6 +303,32 @@ wf.body(func(args) {
 			}
 		}
 
+		if isScFv {
+			for _, col in propertyCols {
+				if col.spec.name != "pl7.app/vdj/sequence" { continue }
+				if col.spec.domain["pl7.app/vdj/feature"] != "CDR3" { continue }
+
+				chain := undefined
+				// scFv is always single-cell
+				receptor := col.spec.axesSpec[0].domain["pl7.app/vdj/receptor"]
+				if receptor != "IG" { continue }
+				index := col.spec.domain["pl7.app/vdj/scClonotypeChain/index"]
+				if index != "primary" { continue }
+				scChain := col.spec.domain["pl7.app/vdj/scClonotypeChain"]
+				chain = scChain == "A" ? "IGHeavy" : scChain == "B" ? "IGLight" : undefined
+				
+				alphabet := col.spec.domain["pl7.app/alphabet"]
+				chainKey := chain == "IGHeavy" ? "H" : chain == "IGLight" ? "KL" : undefined
+				if chainKey == undefined { continue }
+				if alphabet == "aminoacid" && is_undefined(cdr3AaByChain[chainKey]) {
+					cdr3AaByChain[chainKey] = col
+				} else if alphabet == "nucleotide" && is_undefined(cdr3NtByChain[chainKey]) {
+					cdr3NtByChain[chainKey] = col
+				}
+			}
+		}
+
+		///// Determine if VDJRegion or CDR3 sequences are available for numbering /////
 		hasCdr3H := !is_undefined(cdr3AaByChain["H"])
 		hasCdr3KL := !is_undefined(cdr3AaByChain["KL"])
 		useVdjRegionNumbering := hasH || hasKL
@@ -271,6 +340,7 @@ wf.body(func(args) {
 			ll.assert(useVdjRegionNumbering || useCdr3Numbering, "VDJRegion or CDR3 amino acid sequence is required for numbering")
 		}
 
+		///// Numbering based on VDJRegion sequences (When available) /////
 		if useVdjRegionNumbering {
 			numberingAaTsvBuilder := pframes.tsvFileBuilder()
 			numberingAaTsvBuilder.setAxisHeader(clonotypeKeyAxisSpec, "clonotypeKey")
@@ -314,6 +384,7 @@ wf.body(func(args) {
 			if cdrMappingH != undefined { cdrAnnotationAvailableByChain["H"] = true }
 			if cdrMappingKL != undefined { cdrAnnotationAvailableByChain["KL"] = true }
 
+			// ANARCI is used to number the VDJRegion sequences
 			numbering := render.create(numberingTpl, {
 				inputAaTsv: numberingAaTsv,
 				inputTsv: numberingInputTsv,
@@ -326,6 +397,7 @@ wf.body(func(args) {
 			numberingTsv = numbering.output("numbered", 24 * 60 * 60 * 1000)
 		}
 
+		///// Numbering based on CDR3 sequences (When VDJRegion is not available /////)
 		if useCdr3Numbering {
 			cdr3TsvBuilder := pframes.tsvFileBuilder()
 			cdr3TsvBuilder.setAxisHeader(clonotypeKeyAxisSpec, "clonotypeKey")
@@ -358,6 +430,7 @@ wf.body(func(args) {
 			cdr3Tsv = cdr3TsvBuilder.build()
 		}
 
+		///// Generate numbering headers and specs /////
 		schemeLabel := numberingScheme == "imgt" ? "IMGT" : numberingScheme == "kabat" ? "Kabat" : "Chothia"
 		for _, chainKey in ["H", "KL"] {
 			if is_undefined(aaByChain[chainKey]) { continue }
