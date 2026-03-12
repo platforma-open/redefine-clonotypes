@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.redefine-clonotypes.workflow
 
+## 1.5.1
+
+### Patch Changes
+
+- edd7827: Fix numbering schema for scFv
+
 ## 1.5.0
 
 ### Minor Changes
