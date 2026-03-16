@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.redefine-clonotypes.workflow
 
+## 1.5.2
+
+### Patch Changes
+
+- e30ced9: Improve memory usage
+
 ## 1.5.1
 
 ### Patch Changes
