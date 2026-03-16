@@ -549,6 +549,8 @@ wf.body(func(args) {
 	abundancesTsv := abundanceTsvBuilder.build()
 
 	propertyTsvBuilder := pframes.tsvFileBuilder()
+	propertyTsvBuilder.mem("16GiB")
+	propertyTsvBuilder.cpu(1)
 	propertyTsvBuilder.setAxisHeader(clonotypeKeyAxisSpec, "clonotypeKey")
 	propertyHeaders := {}
 	for i, col in propertyCols {
