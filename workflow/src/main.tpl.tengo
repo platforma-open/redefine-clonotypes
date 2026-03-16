@@ -203,6 +203,8 @@ wf.body(func(args) {
 
 	// --- Build the initial TSV for the pt workflow ---
 	abundanceTsvBuilder := pframes.tsvFileBuilder()
+	abundanceTsvBuilder.mem("16GiB")
+	abundanceTsvBuilder.cpu(1)
 	abundanceTsvBuilder.setAxisHeader(sampleIdAxisSpec, "sampleId")
 	abundanceTsvBuilder.setAxisHeader(clonotypeKeyAxisSpec, "clonotypeKey")
 
@@ -561,6 +563,8 @@ wf.body(func(args) {
 	
 	// --- Define the entire data pipeline in a single pt workflow ---
 	ptWf := pt.workflow()
+	ptWf.mem("16GiB")
+	ptWf.cpu(1)
 
 	df := ptWf.frame(abundancesTsv, {xsvType: "tsv"})
 	numberingDf := undefined
