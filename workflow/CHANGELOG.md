@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.redefine-clonotypes.workflow
 
+## 1.5.3
+
+### Patch Changes
+
+- a068278: Set memory limit (16GiB) on propertyTsvBuilder to prevent OOM kills during properties TSV materialization
+
 ## 1.5.2
 
 ### Patch Changes
