@@ -1,5 +1,12 @@
 # @platforma-open/milaboratories.redefine-clonotypes
 
+## 1.2.6
+
+### Patch Changes
+
+- Updated dependencies [689b88c]
+  - @platforma-open/milaboratories.redefine-clonotypes.workflow@1.5.4
+
 ## 1.2.5
 
 ### Patch Changes

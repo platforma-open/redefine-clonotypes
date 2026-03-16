@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.redefine-clonotypes.workflow
 
+## 1.5.4
+
+### Patch Changes
+
+- 689b88c: Set explicit memory limits on remaining containerized commands to prevent OOM kills: xsv.importFile calls (8GiB), ANARCI (16GiB/4cpu), numbering script (8GiB/2cpu)
+
 ## 1.5.3
 
 ### Patch Changes
