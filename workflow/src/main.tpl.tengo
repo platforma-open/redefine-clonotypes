@@ -1011,7 +1011,7 @@ wf.body(func(args) {
 		columns: newAbundanceColumns,
 		storageFormat: "Parquet",
 		partitionKeyLength: 1
-	}, { splitDataAndSpec: true })
+	}, { splitDataAndSpec: true, mem: "8GiB", cpu: 1 })
 
 	propertyAxes := [
 		{
@@ -1061,7 +1061,7 @@ wf.body(func(args) {
 		columns: newPropertyColumns,
 		storageFormat: "Parquet",
 		partitionKeyLength: 0
-	}, { splitDataAndSpec: true })
+	}, { splitDataAndSpec: true, mem: "8GiB", cpu: 1 })
 	
 
 	pfBuilder := pframes.pFrameBuilder()

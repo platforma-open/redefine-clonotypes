@@ -32,6 +32,8 @@ self.body(func(inputs) {
 
     anarciBuilder := exec.builder().
         software(anarciSw).
+        cpu(4).
+        mem("16GiB").
         arg("-i").arg("input.fasta").
         arg("--scheme").arg(scheme).
         arg("--ncpu").argWithVar("{system.cpu}").
@@ -53,6 +55,8 @@ self.body(func(inputs) {
 
     numberingExec := exec.builder().
         software(numberingSw).
+        cpu(2).
+        mem("8GiB").
         addFile("input.tsv", inputTsv).
         arg("--input_tsv").arg("input.tsv").
         arg("--scheme").arg(scheme)
