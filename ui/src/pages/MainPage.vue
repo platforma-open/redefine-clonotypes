@@ -60,10 +60,16 @@ function setDataset(ref: PlRef | undefined) {
     <PlAlert v-if="!isValid" type="info">
       Please select a VDJ dataset and a new clonotype definition.
     </PlAlert>
-    <div v-else-if="isValid && !app.model.outputs.isRunning" class="results">
-      <h3>Results</h3>
-      <p>Number of clonotypes before: {{ app.model.outputs.stats?.nClonotypesBefore?.toLocaleString() ?? 'N/A' }}</p>
-      <p>Number of clonotypes after: {{ app.model.outputs.stats?.nClonotypesAfter?.toLocaleString() ?? 'N/A' }}</p>
-    </div>
+    <template v-else-if="isValid && !app.model.outputs.isRunning">
+      <PlAlert v-if="app.model.outputs.numberingWarning" type="warn">
+        {{ app.model.outputs.numberingWarning }}
+      </PlAlert>
+      <div class="results">
+        <h3>Results</h3>
+        <p>Input clonotypes: {{ app.model.outputs.stats?.nClonotypesBefore?.toLocaleString() ?? 'N/A' }}</p>
+        <p v-if="app.model.args.numberingScheme !== undefined">Succesfully numbered: {{ app.model.outputs.numberingStats?.numbered?.toLocaleString() ?? 'N/A' }}</p>
+        <p>Output clonotypes after redefinition: {{ app.model.outputs.stats?.nClonotypesAfter?.toLocaleString() ?? 'N/A' }}</p>
+      </div>
+    </template>
   </PlBlockPage>
 </template>
