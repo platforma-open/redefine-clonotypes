@@ -1,5 +1,16 @@
 # @platforma-open/milaboratories.redefine-clonotypes.ui
 
+## 1.5.0
+
+### Minor Changes
+
+- 02b09f9: Deal with empty results after ANARCI numbering
+
+### Patch Changes
+
+- Updated dependencies [02b09f9]
+  - @platforma-open/milaboratories.redefine-clonotypes.model@1.5.0
+
 ## 1.4.0
 
 ### Minor Changes

@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.redefine-clonotypes.anarci-numbering
 
+## 1.2.0
+
+### Minor Changes
+
+- 02b09f9: Deal with empty results after ANARCI numbering
+
 ## 1.1.0
 
 ### Minor Changes
