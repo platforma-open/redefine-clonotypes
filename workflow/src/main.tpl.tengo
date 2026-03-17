@@ -1120,16 +1120,15 @@ wf.body(func(args) {
 	}
 	finalPf := pfBuilder.build()
 
-	numberingStatsContent := undefined
+	outputs := {
+		statsTsvContent: statsTsvContent
+	}
 	if numberingStatsTsv != undefined {
-		numberingStatsContent = numberingStatsTsv
+		outputs.numberingStatsContent = numberingStatsTsv
 	}
 
 	return {
-		outputs: {
-			statsTsvContent: statsTsvContent,
-			numberingStatsContent: numberingStatsContent
-		},
+		outputs: outputs,
 		exports: {
 			pf: finalPf
 		}
