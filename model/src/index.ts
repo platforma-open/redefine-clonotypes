@@ -252,6 +252,10 @@ export const model = BlockModel.create()
     }
     return undefined;
   })
+  .output('anarciLog', (ctx) => {
+    return ctx.outputs?.resolve({ field: 'anarciLog', assertFieldType: 'Input', allowPermanentAbsence: true })?.getLogHandle();
+  })
+
   .output('isRunning', (ctx) => ctx.outputs?.getIsReadyOrError() === false)
 
   .title(() => 'Redefine Clonotypes')

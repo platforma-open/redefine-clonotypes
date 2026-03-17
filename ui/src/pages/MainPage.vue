@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import type { PlRef } from '@platforma-sdk/model';
-import { PlAlert, PlBlockPage, PlDropdown, PlDropdownMulti, PlDropdownRef } from '@platforma-sdk/ui-vue';
-import { computed, watchEffect } from 'vue';
+import { PlAlert, PlBlockPage, PlBtnGhost, PlDropdown, PlDropdownMulti, PlDropdownRef, PlLogView, PlMaskIcon24, PlSlideModal } from '@platforma-sdk/ui-vue';
+import { computed, ref, watchEffect } from 'vue';
 import { useApp } from '../app';
 
 const app = useApp();
+const anarciLogOpen = ref(false);
 
 const isValid = computed(() => app.model.args.anchorRef !== undefined && (app.model.args.clonotypeDefinition?.length ?? 0) > 0);
 const numberingAvailable = computed(() => app.model.outputs.numberingAvailable === true);
@@ -65,11 +66,23 @@ function setDataset(ref: PlRef | undefined) {
         {{ app.model.outputs.numberingWarning }}
       </PlAlert>
       <div class="results">
-        <h3>Results</h3>
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <h3 style="margin: 0;">Results</h3>
+          <PlBtnGhost v-if="app.model.outputs.anarciLog" @click.stop="() => (anarciLogOpen = true)">
+            ANARCI Log
+            <template #append>
+              <PlMaskIcon24 name="file-logs" />
+            </template>
+          </PlBtnGhost>
+        </div>
         <p>Input clonotypes: {{ app.model.outputs.stats?.nClonotypesBefore?.toLocaleString() ?? 'N/A' }}</p>
         <p v-if="app.model.args.numberingScheme !== undefined">Succesfully numbered: {{ app.model.outputs.numberingStats?.numbered?.toLocaleString() ?? 'N/A' }}</p>
         <p>Output clonotypes after redefinition: {{ app.model.outputs.stats?.nClonotypesAfter?.toLocaleString() ?? 'N/A' }}</p>
       </div>
     </template>
+    <PlSlideModal v-model="anarciLogOpen" width="80%">
+      <template #title>ANARCI Log</template>
+      <PlLogView :log-handle="app.model.outputs.anarciLog"/>
+    </PlSlideModal>
   </PlBlockPage>
 </template>

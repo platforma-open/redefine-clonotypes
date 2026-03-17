@@ -143,6 +143,7 @@ wf.body(func(args) {
 	numberingLabels := {}
 	numberingTsv := undefined
 	numberingStatsTsv := undefined
+	anarciLog := undefined
 	numberingChains := []
 	numberingChainSet := {}
 	cdr3Tsv := undefined
@@ -399,6 +400,7 @@ wf.body(func(args) {
 			})
 			numberingTsv = numbering.output("numbered", 24 * 60 * 60 * 1000)
 			numberingStatsTsv = numbering.output("numberingStats", 24 * 60 * 60 * 1000)
+			anarciLog = numbering.output("anarciLog")
 		}
 
 		///// Numbering based on CDR3 sequences (When VDJRegion is not available) /////
@@ -1125,6 +1127,9 @@ wf.body(func(args) {
 	}
 	if numberingStatsTsv != undefined {
 		outputs.numberingStatsContent = numberingStatsTsv
+	}
+	if anarciLog != undefined {
+		outputs.anarciLog = anarciLog
 	}
 
 	return {
