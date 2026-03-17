@@ -279,6 +279,7 @@ def main() -> None:
     p.add_argument("--cdr_mapping_h", required=False, help="CDR annotation mapping JSON for heavy chain")
     p.add_argument("--cdr_mapping_kl", required=False, help="CDR annotation mapping JSON for light chain")
     p.add_argument("--out_tsv", required=True, help="Output TSV path")
+    p.add_argument("--stats_tsv", required=False, help="Output numbering stats TSV path")
     args = p.parse_args()
 
     keys, seqs, fields = read_input_tsv(args.input_tsv)
@@ -331,6 +332,34 @@ def main() -> None:
         data.append(row)
 
     pl.DataFrame(data, schema=cols).write_csv(args.out_tsv, separator="\t")
+
+    # Write numbering stats + sample unnumbered sequences for debugging
+    if args.stats_tsv:
+        unique_keys = list(dict.fromkeys(keys))
+        total = len(unique_keys)
+        numbered_h = len(anarci_h) if has_h else 0
+        numbered_kl = len(anarci_kl) if has_kl else 0
+
+        # Collect sample AA sequences from unnumbered clonotypes
+        numbered_set = set(anarci_h.keys()) | set(anarci_kl.keys())
+        unnumbered_samples: list[str] = []
+        for key in unique_keys:
+            if key not in numbered_set:
+                for chain in chains:
+                    aa = seqs.get(key, {}).get(chain, {}).get("aa", "")
+                    if aa:
+                        unnumbered_samples.append(f"{chain}|{aa}")
+                        break
+            if len(unnumbered_samples) >= 5:
+                break
+
+        stats_data = {
+            "totalClonotypes": [total],
+            "numberedH": [numbered_h],
+            "numberedKL": [numbered_kl],
+            "unnumberedSamples": [";".join(unnumbered_samples)],
+        }
+        pl.DataFrame(stats_data).write_csv(args.stats_tsv, separator="\t")
 
 
 if __name__ == "__main__":

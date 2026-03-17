@@ -3,6 +3,41 @@ import type { InferOutputsType, PlRef, SUniversalPColumnId } from '@platforma-sd
 import { BlockModel } from '@platforma-sdk/model';
 import { getDefaultBlockLabel } from './label';
 
+/** Parses the numbering_stats.tsv produced by the anarci-numbering software.
+ *  Returns how many clonotypes existed vs how many ANARCI could number,
+ *  plus sample AA sequences from unnumbered clonotypes for debugging. */
+function parseNumberingStats(tsv: string | undefined): {
+  total: number;
+  numbered: number;
+  unnumberedSamples: string[];
+} | undefined {
+  if (!tsv) return undefined;
+
+  // TSV has exactly 2 lines: header + one data row
+  const lines = tsv.trim().split('\n');
+  if (lines.length !== 2) return undefined;
+  const headers = lines[0].split('\t');
+  const values = lines[1].split('\t');
+
+  const totalIdx = headers.indexOf('totalClonotypes');
+  if (totalIdx === -1) return undefined;
+  const total = parseInt(values[totalIdx], 10);
+  if (Number.isNaN(total)) return undefined;
+
+  // ANARCI reports H and KL chains separately; take the relevant one
+  const hIdx = headers.indexOf('numberedH');
+  const klIdx = headers.indexOf('numberedKL');
+  const numberedH = hIdx !== -1 ? (parseInt(values[hIdx], 10) || 0) : 0;
+  const numberedKL = klIdx !== -1 ? (parseInt(values[klIdx], 10) || 0) : 0;
+
+  // Sample AA sequences from clonotypes ANARCI could not number (format: "key|chain|sequence")
+  const samplesIdx = headers.indexOf('unnumberedSamples');
+  const samplesRaw = samplesIdx !== -1 ? (values[samplesIdx] ?? '') : '';
+  const unnumberedSamples = samplesRaw ? samplesRaw.split(';').filter(Boolean) : [];
+
+  return { total, numbered: Math.max(numberedH, numberedKL), unnumberedSamples };
+}
+
 export type BlockArgs = {
   defaultBlockLabel: string;
   customBlockLabel: string;
@@ -207,6 +242,30 @@ export const model = BlockModel.create()
       nClonotypesAfter: parseInt(values[afterIndex], 10),
     };
   })
+
+  .output('numberingStats', (ctx) => {
+    if (!ctx.args.numberingScheme) return undefined;
+    const tsv = ctx.outputs?.resolve({ field: 'numberingStatsContent', assertFieldType: 'Input', allowPermanentAbsence: true })?.getDataAsString();
+    return parseNumberingStats(tsv);
+  })
+
+  .output('numberingWarning', (ctx) => {
+    if (!ctx.args.numberingScheme) return undefined;
+    const tsv = ctx.outputs?.resolve({ field: 'numberingStatsContent', assertFieldType: 'Input', allowPermanentAbsence: true })?.getDataAsString();
+    const ns = parseNumberingStats(tsv);
+    if (!ns) return undefined;
+    if (ns.numbered === 0) {
+      return `ANARCI could not number any of the ${ns.total.toLocaleString()} clonotypes. The framework regions may be too divergent from known germline sequences.`;
+    }
+    if (ns.numbered < ns.total * 0.5) {
+      return `ANARCI could only number ${ns.numbered.toLocaleString()} of ${ns.total.toLocaleString()} clonotypes. The framework regions may be divergent from known germline sequences. Unnumbered clonotypes are excluded from the output.`;
+    }
+    return undefined;
+  })
+  .output('anarciLog', (ctx) => {
+    return ctx.outputs?.resolve({ field: 'anarciLog', assertFieldType: 'Input', allowPermanentAbsence: true })?.getLogHandle();
+  })
+
   .output('isRunning', (ctx) => ctx.outputs?.getIsReadyOrError() === false)
 
   .title(() => 'Redefine Clonotypes')
