@@ -25,6 +25,7 @@ watchEffect(() => {
 function setDataset(ref: PlRef | undefined) {
   app.model.args.anchorRef = ref;
 }
+
 </script>
 
 <template>
@@ -82,6 +83,10 @@ function setDataset(ref: PlRef | undefined) {
     </template>
     <PlSlideModal v-model="anarciLogOpen" width="80%">
       <template #title>ANARCI Log</template>
+      <pre v-if="app.model.outputs.numberingStats?.unnumberedSamples?.length" style="margin: 0; padding: 16px; font-size: 12px; white-space: pre-wrap; word-break: break-all; border-bottom: 1px solid var(--pl-color-border, #ddd);">Sample of un-numbered sequences ({{ app.model.outputs.numberingStats.unnumberedSamples.length }}):
+
+<template v-for="(sample, idx) in app.model.outputs.numberingStats.unnumberedSamples" :key="idx">{{ sample }}
+</template></pre>
       <PlLogView :log-handle="app.model.outputs.anarciLog"/>
     </PlSlideModal>
   </PlBlockPage>

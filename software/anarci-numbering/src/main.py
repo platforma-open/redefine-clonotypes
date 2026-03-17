@@ -333,16 +333,31 @@ def main() -> None:
 
     pl.DataFrame(data, schema=cols).write_csv(args.out_tsv, separator="\t")
 
-    # Write numbering stats
+    # Write numbering stats + sample unnumbered sequences for debugging
     if args.stats_tsv:
         unique_keys = list(dict.fromkeys(keys))
         total = len(unique_keys)
         numbered_h = len(anarci_h) if has_h else 0
         numbered_kl = len(anarci_kl) if has_kl else 0
+
+        # Collect sample AA sequences from unnumbered clonotypes
+        numbered_set = set(anarci_h.keys()) | set(anarci_kl.keys())
+        unnumbered_samples: list[str] = []
+        for key in unique_keys:
+            if key not in numbered_set:
+                for chain in chains:
+                    aa = seqs.get(key, {}).get(chain, {}).get("aa", "")
+                    if aa:
+                        unnumbered_samples.append(f"{chain}|{aa}")
+                        break
+            if len(unnumbered_samples) >= 5:
+                break
+
         stats_data = {
             "totalClonotypes": [total],
             "numberedH": [numbered_h],
             "numberedKL": [numbered_kl],
+            "unnumberedSamples": [";".join(unnumbered_samples)],
         }
         pl.DataFrame(stats_data).write_csv(args.stats_tsv, separator="\t")
 

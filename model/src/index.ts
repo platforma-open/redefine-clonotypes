@@ -4,8 +4,13 @@ import { BlockModel } from '@platforma-sdk/model';
 import { getDefaultBlockLabel } from './label';
 
 /** Parses the numbering_stats.tsv produced by the anarci-numbering software.
- *  Returns how many clonotypes existed vs how many ANARCI could number. */
-function parseNumberingStats(tsv: string | undefined): { total: number; numbered: number } | undefined {
+ *  Returns how many clonotypes existed vs how many ANARCI could number,
+ *  plus sample AA sequences from unnumbered clonotypes for debugging. */
+function parseNumberingStats(tsv: string | undefined): {
+  total: number;
+  numbered: number;
+  unnumberedSamples: string[];
+} | undefined {
   if (!tsv) return undefined;
 
   // TSV has exactly 2 lines: header + one data row
@@ -25,7 +30,12 @@ function parseNumberingStats(tsv: string | undefined): { total: number; numbered
   const numberedH = hIdx !== -1 ? (parseInt(values[hIdx], 10) || 0) : 0;
   const numberedKL = klIdx !== -1 ? (parseInt(values[klIdx], 10) || 0) : 0;
 
-  return { total, numbered: Math.max(numberedH, numberedKL) };
+  // Sample AA sequences from clonotypes ANARCI could not number (format: "key|chain|sequence")
+  const samplesIdx = headers.indexOf('unnumberedSamples');
+  const samplesRaw = samplesIdx !== -1 ? (values[samplesIdx] ?? '') : '';
+  const unnumberedSamples = samplesRaw ? samplesRaw.split(';').filter(Boolean) : [];
+
+  return { total, numbered: Math.max(numberedH, numberedKL), unnumberedSamples };
 }
 
 export type BlockArgs = {
