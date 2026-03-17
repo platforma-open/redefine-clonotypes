@@ -32,10 +32,9 @@
       "longDescription": "file:../docs/description.md",
       "changelog": "file:../CHANGELOG.md",
       "tags": [
-        "VDJ",
-        "clonotype",
-        "redefine",
-        "abundance"
+        "airr",
+        "vdj",
+        "downstream"
       ],
       "organization": {
         "name": "MiLaboratories Inc",
