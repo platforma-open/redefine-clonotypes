@@ -6,7 +6,7 @@ anarciSw := assets.importSoftware("@platforma-open/milaboratories.software-anarc
 fastaSw := assets.importSoftware("@platforma-open/milaboratories.redefine-clonotypes.assembling-fasta:main")
 numberingSw := assets.importSoftware("@platforma-open/milaboratories.redefine-clonotypes.anarci-numbering:main")
 
-self.defineOutputs("numbered")
+self.defineOutputs("numbered", "numberingStats")
 
 self.body(func(inputs) {
     inputAaTsv := inputs.inputAaTsv
@@ -30,6 +30,8 @@ self.body(func(inputs) {
         cache(24 * 60 * 60 * 1000).
         run()
 
+    // Pre-create empty CSV placeholders (writeFile) so that saveFile always finds the files,
+    // even when ANARCI cannot number any sequences (e.g. heavily engineered scaffolds)
     anarciBuilder := exec.builder().
         software(anarciSw).
         cpu(4).
@@ -38,7 +40,9 @@ self.body(func(inputs) {
         arg("--scheme").arg(scheme).
         arg("--ncpu").argWithVar("{system.cpu}").
         arg("-o").arg("anarci.csv").arg("--csv").
-        addFile("input.fasta", fastaCmd.getFile("input.fasta"))
+        addFile("input.fasta", fastaCmd.getFile("input.fasta")).
+        writeFile("anarci.csv_H.csv", "Id\n").
+        writeFile("anarci.csv_KL.csv", "Id\n")
     if isSingleCell {
         anarciBuilder = anarciBuilder.saveFile("anarci.csv_H.csv").saveFile("anarci.csv_KL.csv")
     } else {
@@ -59,7 +63,8 @@ self.body(func(inputs) {
         mem("8GiB").
         addFile("input.tsv", inputTsv).
         arg("--input_tsv").arg("input.tsv").
-        arg("--scheme").arg(scheme)
+        arg("--scheme").arg(scheme).
+        arg("--stats_tsv").arg("numbering_stats.tsv")
     if cdrMappingH != undefined && cdrMappingH != "" {
         numberingExec = numberingExec.arg("--cdr_mapping_h").arg(cdrMappingH)
     }
@@ -86,11 +91,13 @@ self.body(func(inputs) {
     numberingExec = numberingExec.
         arg("--out_tsv").arg("numbered.tsv").
         saveFile("numbered.tsv").
+        saveFileContent("numbering_stats.tsv").
         printErrStreamToStdout().
         cache(24 * 60 * 60 * 1000).
         run()
 
     return {
-        numbered: numberingExec.getFile("numbered.tsv")
+        numbered: numberingExec.getFile("numbered.tsv"),
+        numberingStats: numberingExec.getFileContent("numbering_stats.tsv")
     }
 })

@@ -247,7 +247,7 @@ export const model = BlockModel.create()
       return `ANARCI could not number any of the ${ns.total.toLocaleString()} clonotypes. The framework regions may be too divergent from known germline sequences.`;
     }
     if (ns.numbered < ns.total * 0.5) {
-      return `ANARCI could only number ${ns.numbered.toLocaleString()} of ${ns.total.toLocaleString()} clonotypes (${Math.round(100 * ns.numbered / ns.total)}%). The framework regions may be divergent from known germline sequences. Unnumbered clonotypes are excluded from the output.`;
+      return `ANARCI could only number ${ns.numbered.toLocaleString()} of ${ns.total.toLocaleString()} clonotypes. The framework regions may be divergent from known germline sequences. Unnumbered clonotypes are excluded from the output.`;
     }
     return undefined;
   })

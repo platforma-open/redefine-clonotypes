@@ -142,6 +142,7 @@ wf.body(func(args) {
 	numberingSpecs := {}
 	numberingLabels := {}
 	numberingTsv := undefined
+	numberingStatsTsv := undefined
 	numberingChains := []
 	numberingChainSet := {}
 	cdr3Tsv := undefined
@@ -397,9 +398,10 @@ wf.body(func(args) {
 				cdrMappingKL: cdrMappingKL
 			})
 			numberingTsv = numbering.output("numbered", 24 * 60 * 60 * 1000)
+			numberingStatsTsv = numbering.output("numberingStats", 24 * 60 * 60 * 1000)
 		}
 
-		///// Numbering based on CDR3 sequences (When VDJRegion is not available /////)
+		///// Numbering based on CDR3 sequences (When VDJRegion is not available) /////
 		if useCdr3Numbering {
 			cdr3TsvBuilder := pframes.tsvFileBuilder()
 			cdr3TsvBuilder.setAxisHeader(clonotypeKeyAxisSpec, "clonotypeKey")
@@ -498,6 +500,10 @@ wf.body(func(args) {
 		abundanceTsvBuilder.add(anonymizedCol, { header: header })
 	}
 	
+	// Track which numbered headers were used in the definition, so we can
+	// filter out rows where ANARCI could not number the sequence.
+	numberedDefinitionHeaders := []
+
 	definitionHeaders := []
 	definitionLabels := []
 	definitionHeaderSet := {}
@@ -538,6 +544,7 @@ wf.body(func(args) {
 			if chainKey != undefined && (alphabet == "aminoacid" || alphabet == "nucleotide") {
 				headerNum := numberingScheme + "_" + feature + "_" + (alphabet == "aminoacid" ? "aa" : "nt") + "_" + chainKey
 				appendDefinition(headerNum, numberingLabels[headerNum], numberingSpecs[headerNum])
+				numberedDefinitionHeaders = append(numberedDefinitionHeaders, headerNum)
 				useNumbered = true
 			}
 		}
@@ -568,7 +575,11 @@ wf.body(func(args) {
 	ptWf.mem("16GiB")
 	ptWf.cpu(1)
 
+	// Load abundance data
 	df := ptWf.frame(abundancesTsv, {xsvType: "tsv"})
+
+	// Join ANARCI numbering results to abundance and derive VDJRegion 
+	// columns by concatenating individual region columns from numbered.tsv.
 	numberingDf := undefined
 	if numberingTsv != undefined {
 		numberingDf = ptWf.frame(numberingTsv, {xsvType: "tsv"})
@@ -598,6 +609,8 @@ wf.body(func(args) {
 			df = df.withColumns(numberingDerivedExprs...)
 		}
 	}
+	// Join CDR3 sequences (fallback when VDJRegion is unavailable).
+	// Trim leading FR3 residues and trailing FR4 residue to isolate the core CDR3.
 	cdr3Df := undefined
 	if cdr3Tsv != undefined {
 		cdr3Df = ptWf.frame(cdr3Tsv, {xsvType: "tsv"})
@@ -663,7 +676,26 @@ wf.body(func(args) {
 	}
 	sampleTotalsDf := df.groupBy("sampleId").agg(sampleTotalAggs...)
 
-	// 2. Create the new clonotype definition string
+	// Count total clonotypes BEFORE filtering for accurate stats.
+	nClonotypesBefore := df.select(pt.col("clonotypeKey").nUnique().alias("nClonotypesBefore"))
+
+	// 2. Filter + compute new clonotype key
+	// When numbering is enabled, only clonotypes that ANARCI could number
+	// are kept. Unnumbered clonotypes have empty numbered columns and are
+	// filtered out before key computation.
+	if len(numberedDefinitionHeaders) > 0 {
+		filterExpr := undefined
+		for _, h in numberedDefinitionHeaders {
+			// A clonotype must have non-empty values for every numbered definition header
+			cond := pt.col(h).isNotNull().and(pt.col(h).neq(pt.lit("")))
+			if filterExpr == undefined {
+				filterExpr = cond
+			} else {
+				filterExpr = filterExpr.and(cond)
+			}
+		}
+		df = df.filter(filterExpr)
+	}
 	definitionColExprs := slices.map(definitionHeaders, func(h) { return pt.col(h) })
 	dfWithNewKeyStr := df.withColumns(
 		pt.
@@ -671,23 +703,25 @@ wf.body(func(args) {
 		  hash("sha256", "base64_alphanumeric", 120).
 		  alias("newClonotypeKey")
 	)
-	
-	// 3. Calculate stats
-	statsDf := dfWithNewKeyStr.select(
-		pt.col("clonotypeKey").nUnique().alias("nClonotypesBefore"),
-		pt.col("newClonotypeKey").nUnique().alias("nClonotypesAfter")
-	)
+
+	// 3. Calculate stats — nClonotypesBefore from unfiltered df,
+	// nClonotypesAfter from filtered + redefined df. Cross join works
+	// because both are single-row aggregations.
+	nClonotypesAfter := dfWithNewKeyStr.select(pt.col("newClonotypeKey").nUnique().alias("nClonotypesAfter"))
+	statsDf := nClonotypesBefore.join(nClonotypesAfter, {how: "cross"})
 	statsDf.saveContent("stats.tsv")
 
-	// 4. Aggregate abundances
+	// 4. Aggregate abundances under new clonotype keys.
+	// Sum abundances per sample × new key. Keep the old clonotypeKey of the
+	// most-abundant member as representative (for property lookup later).
 	abundanceAggs := []
-	for h in maps.getKeys(abundanceHeaders) { 
-		abundanceAggs = append(abundanceAggs, pt.col(h).sum().alias(h)) 
+	for h in maps.getKeys(abundanceHeaders) {
+		abundanceAggs = append(abundanceAggs, pt.col(h).sum().alias(h))
 	}
 	abundanceAggs = append(abundanceAggs, pt.col("clonotypeKey").maxBy(pt.col(mainAbundanceHeader)).alias("clonotypeKey"))
 	df_abundances := dfWithNewKeyStr.groupBy("sampleId", "newClonotypeKey").agg(abundanceAggs...)
 
-	// 8. Per-sample normalization
+	// 5. Per-sample normalization (fraction of total)
 	df_abundances = df_abundances.join(sampleTotalsDf, {on: "sampleId", how: "left"})
 
 	normExpressions := []
@@ -699,8 +733,10 @@ wf.body(func(args) {
 	df_abundances = df_abundances.withColumns(normExpressions...)
 	df_abundances.save("abundances.tsv")
 
-	// 5. Get representative properties
+	// 6. Aggregate properties — for each new clonotype, pick the representative
+	// property values from the old clonotype with the highest primary abundance.
 
+	// Build a set of existing sequence feature keys for CDR3 fallback logic
 	existingSeqKeys = {}
 	for h, col in propertyHeaders {
 		if col.spec.name != "pl7.app/vdj/sequence" { continue }
@@ -807,10 +843,14 @@ wf.body(func(args) {
 		}
 	}
 
+	// Build aggregation expressions: for each property column, pick the value
+	// from the most-abundant representative. When numbering is enabled, use
+	// the numbered version of sequence/annotation columns instead.
 	aggExpressions := []
 	for h, _ in propertyHeaders {
 		col := propertyHeaders[h]
 		useNumbered := false
+		// CDR annotation columns → use ANARCI-derived annotations if available
 		if numberingDf != undefined && hasCdrAnnotationColumns && col.spec.name == "pl7.app/vdj/sequence/annotation" {
 			if col.spec.domain["pl7.app/sequence/annotation/type"] == "CDRs" {
 				chainKey := cdrAnnotationHeaderChain[h]
@@ -826,6 +866,7 @@ wf.body(func(args) {
 				}
 			}
 		}
+		// Sequence columns → use numbered region columns if applicable
 		if numberingEnabled && col.spec.name == "pl7.app/vdj/sequence" {
 			feature := col.spec.domain["pl7.app/vdj/feature"]
 			isNumberedFeature := false
@@ -886,7 +927,7 @@ wf.body(func(args) {
 	
 	aggregatedDf.save("properties.tsv")
 	
-	// --- Run and process ---
+	// Execute the pt workflow and collect results
 	ptResult := ptWf.run()
 	finalAbundancesTsvRaw := ptResult.getFile("abundances.tsv")
 	finalPropertiesTsv := ptResult.getFile("properties.tsv")
@@ -903,7 +944,7 @@ wf.body(func(args) {
 	finalAbundancesTsv := abundancesDeanonimization.output("deanonimizedTsv")
 
 
-	// --- Construct specs ---
+	// Construct output PFrame specs — define axes, columns, and trace
 	datasetSpec := columns.getSpec(args.anchorRef)
 	
 	// Use customBlockLabel if user edited it, otherwise use defaultBlockLabel
@@ -921,11 +962,13 @@ wf.body(func(args) {
 		label: traceLabel
 	})
 
+	// Mark the new clonotype key axis as redefined by this block, and encode
+	// the new definition structure so downstream blocks know what columns
+	// were used to build the key.
 	newClonotypeKeySpec := maps.clone(clonotypeKeyAxisSpec)
 	newClonotypeKeySpec.domain = maps.merge(newClonotypeKeySpec.domain, {
 		"pl7.app/redefined-by": blockId
 	})
-	// Override structure key
 	structureKey := isSingleCell ? "pl7.app/vdj/scClonotypeKey/structure" : "pl7.app/vdj/clonotypeKey/structure"
 	newClonotypeKeySpec.domain[structureKey] = string(json.encode(definitionStructure))
 
@@ -941,6 +984,8 @@ wf.body(func(args) {
 		}
 	]
 	
+	// Build abundance output columns: unnormalized (counts) and normalized 
+	// (fraction of total).
 	newAbundanceColumns := []
 	for header, col in abundanceHeaders {
 		newSpecUnnormalized := maps.clone(col.spec)
@@ -1033,6 +1078,7 @@ wf.body(func(args) {
 		}
 	}]
 
+	// Tag sequence property columns with the numbering schema used
 	for header, col in propertyHeaders {
 		newSpec :=	maps.clone(col.spec)
 		delete(newSpec, "axesSpec")
@@ -1064,6 +1110,7 @@ wf.body(func(args) {
 	}, { splitDataAndSpec: true, mem: "8GiB", cpu: 1 })
 	
 
+	// Assemble the final PFrame with trace metadata for provenance
 	pfBuilder := pframes.pFrameBuilder()
 	for k, v in abundancePf {
 		pfBuilder.add(k, trace.inject(v.spec), v.data)
@@ -1073,9 +1120,15 @@ wf.body(func(args) {
 	}
 	finalPf := pfBuilder.build()
 
+	numberingStatsContent := undefined
+	if numberingStatsTsv != undefined {
+		numberingStatsContent = numberingStatsTsv
+	}
+
 	return {
 		outputs: {
-			statsTsvContent: statsTsvContent
+			statsTsvContent: statsTsvContent,
+			numberingStatsContent: numberingStatsContent
 		},
 		exports: {
 			pf: finalPf
