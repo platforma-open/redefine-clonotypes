@@ -17,12 +17,13 @@ function parseNumberingStats(tsv: string | undefined): { total: number; numbered
   const totalIdx = headers.indexOf('totalClonotypes');
   if (totalIdx === -1) return undefined;
   const total = parseInt(values[totalIdx], 10);
+  if (Number.isNaN(total)) return undefined;
 
   // ANARCI reports H and KL chains separately; take the relevant one
   const hIdx = headers.indexOf('numberedH');
   const klIdx = headers.indexOf('numberedKL');
-  const numberedH = hIdx !== -1 ? parseInt(values[hIdx], 10) : 0;
-  const numberedKL = klIdx !== -1 ? parseInt(values[klIdx], 10) : 0;
+  const numberedH = hIdx !== -1 ? (parseInt(values[hIdx], 10) || 0) : 0;
+  const numberedKL = klIdx !== -1 ? (parseInt(values[klIdx], 10) || 0) : 0;
 
   return { total, numbered: Math.max(numberedH, numberedKL) };
 }
