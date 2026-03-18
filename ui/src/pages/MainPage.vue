@@ -23,6 +23,11 @@ watchEffect(() => {
   }
 });
 
+const inputIsEmpty = computed(() => {
+  const stats = app.model.outputs.stats;
+  return stats !== undefined && stats.nClonotypesBefore === 0;
+});
+
 // Derive the warning message from numberingStats in the UI layer; the model provides raw facts.
 const numberingWarning = computed(() => {
   const ns = app.model.outputs.numberingStats;
@@ -76,6 +81,9 @@ const numberingWarning = computed(() => {
         {{ numberingWarning }}
       </PlAlert>
       <div class="results">
+        <PlAlert v-if="inputIsEmpty" type="warn">
+          The input dataset you have selected is empty. Please choose a different dataset.
+        </PlAlert>
         <div style="display: flex; align-items: center; justify-content: space-between;">
           <h3 style="margin: 0;">Results</h3>
           <PlBtnGhost v-if="app.model.outputs.anarciLog" @click.stop="() => (anarciLogOpen = true)">
