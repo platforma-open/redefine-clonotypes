@@ -1076,7 +1076,7 @@ wf.body(func(args) {
 			name: "pl7.app/label",
 			valueType: "String",
 			annotations: {
-				"pl7.app/label": "Clone label",
+				"pl7.app/label": "Clone Id",
 				"pl7.app/table/orderPriority": "100000",
 				"pl7.app/table/visibility": "optional"
 			}
