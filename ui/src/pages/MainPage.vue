@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import type { PlRef } from '@platforma-sdk/model';
 import { PlAlert, PlBlockPage, PlBtnGhost, PlDropdown, PlDropdownMulti, PlDropdownRef, PlLogView, PlMaskIcon24, PlSlideModal } from '@platforma-sdk/ui-vue';
 import { computed, ref, watchEffect } from 'vue';
 import { useApp } from '../app';
@@ -17,14 +16,30 @@ const numberingSchemeOptions = [
 ];
 
 watchEffect(() => {
-  if (app.model.args.anchorRef === undefined) {
+  // Reset scheme when dataset is cleared OR when the selected dataset does not support numbering.
+  // Strict === false avoids clearing while the output is still loading (undefined).
+  if (app.model.args.anchorRef === undefined || app.model.outputs.numberingAvailable === false) {
     app.model.args.numberingScheme = undefined;
   }
 });
 
-function setDataset(ref: PlRef | undefined) {
-  app.model.args.anchorRef = ref;
-}
+const inputIsEmpty = computed(() => {
+  const stats = app.model.outputs.stats;
+  return stats !== undefined && stats.nClonotypesBefore === 0;
+});
+
+// Derive the warning message from numberingStats in the UI layer; the model provides raw facts.
+const numberingWarning = computed(() => {
+  const ns = app.model.outputs.numberingStats;
+  if (!ns) return undefined;
+  if (ns.numbered === 0) {
+    return `ANARCI could not number any of the ${ns.total.toLocaleString()} clonotypes. The framework regions may be too divergent from known germline sequences.`;
+  }
+  if (ns.numbered < ns.total * 0.5) {
+    return `ANARCI could only number ${ns.numbered.toLocaleString()} of ${ns.total.toLocaleString()} clonotypes. The framework regions may be divergent from known germline sequences. Unnumbered clonotypes are excluded from the output.`;
+  }
+  return undefined;
+});
 
 </script>
 
@@ -38,7 +53,6 @@ function setDataset(ref: PlRef | undefined) {
       v-model="app.model.args.anchorRef"
       label="VDJ dataset"
       :options="app.model.outputs.datasetOptions"
-      @update:model-value="setDataset"
     />
     <PlDropdownMulti
       v-model="app.model.args.clonotypeDefinition"
@@ -62,11 +76,14 @@ function setDataset(ref: PlRef | undefined) {
     <PlAlert v-if="!isValid" type="info">
       Please select a VDJ dataset and a new clonotype definition.
     </PlAlert>
-    <template v-else-if="isValid && !app.model.outputs.isRunning">
-      <PlAlert v-if="app.model.outputs.numberingWarning" type="warn">
-        {{ app.model.outputs.numberingWarning }}
+    <template v-else-if="!app.model.outputs.isRunning">
+      <PlAlert v-if="numberingWarning" type="warn">
+        {{ numberingWarning }}
       </PlAlert>
       <div class="results">
+        <PlAlert v-if="inputIsEmpty" type="warn">
+          The input dataset you have selected is empty. Please choose a different dataset.
+        </PlAlert>
         <div style="display: flex; align-items: center; justify-content: space-between;">
           <h3 style="margin: 0;">Results</h3>
           <PlBtnGhost v-if="app.model.outputs.anarciLog" @click.stop="() => (anarciLogOpen = true)">

@@ -728,8 +728,11 @@ wf.body(func(args) {
 
 	normExpressions := []
 	for header, _ in abundanceHeaders {
-		normExpressions = append(normExpressions, 
-			pt.col(header).truediv(pt.col(header + "_total")).alias("normalized_" + header)
+		// Cast to Double before division: polars CSE can infer an unexpected String type for the
+		// totals column when both this plan and sampleTotalsDf share the same base scan, causing
+		// "division with 'String' datatypes is not allowed". Explicit casts make this robust.
+		normExpressions = append(normExpressions,
+			pt.col(header).cast("Double").truediv(pt.col(header + "_total").cast("Double")).alias("normalized_" + header)
 		)
 	}
 	df_abundances = df_abundances.withColumns(normExpressions...)
@@ -1073,7 +1076,7 @@ wf.body(func(args) {
 			name: "pl7.app/label",
 			valueType: "String",
 			annotations: {
-				"pl7.app/label": "Clone label",
+				"pl7.app/label": "Clone Id",
 				"pl7.app/table/orderPriority": "100000",
 				"pl7.app/table/visibility": "optional"
 			}

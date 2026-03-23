@@ -249,19 +249,6 @@ export const model = BlockModel.create()
     return parseNumberingStats(tsv);
   })
 
-  .output('numberingWarning', (ctx) => {
-    if (!ctx.args.numberingScheme) return undefined;
-    const tsv = ctx.outputs?.resolve({ field: 'numberingStatsContent', assertFieldType: 'Input', allowPermanentAbsence: true })?.getDataAsString();
-    const ns = parseNumberingStats(tsv);
-    if (!ns) return undefined;
-    if (ns.numbered === 0) {
-      return `ANARCI could not number any of the ${ns.total.toLocaleString()} clonotypes. The framework regions may be too divergent from known germline sequences.`;
-    }
-    if (ns.numbered < ns.total * 0.5) {
-      return `ANARCI could only number ${ns.numbered.toLocaleString()} of ${ns.total.toLocaleString()} clonotypes. The framework regions may be divergent from known germline sequences. Unnumbered clonotypes are excluded from the output.`;
-    }
-    return undefined;
-  })
   .output('anarciLog', (ctx) => {
     return ctx.outputs?.resolve({ field: 'anarciLog', assertFieldType: 'Input', allowPermanentAbsence: true })?.getLogHandle();
   })
