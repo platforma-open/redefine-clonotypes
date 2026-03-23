@@ -1,5 +1,18 @@
 # @platforma-open/milaboratories.redefine-clonotypes
 
+## 1.3.0
+
+### Minor Changes
+
+- 119fa05: fix division error when there are no inputs
+
+### Patch Changes
+
+- Updated dependencies [119fa05]
+  - @platforma-open/milaboratories.redefine-clonotypes.workflow@1.7.0
+  - @platforma-open/milaboratories.redefine-clonotypes.model@1.6.0
+  - @platforma-open/milaboratories.redefine-clonotypes.ui@1.6.0
+
 ## 1.2.7
 
 ### Patch Changes
