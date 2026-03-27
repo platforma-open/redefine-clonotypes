@@ -70,7 +70,7 @@ const numberingWarning = computed(() => {
         :clearable="true"
       >
         <template #tooltip>
-          Apply IMGT, Kabat, or Chothia numbering. Available only for datasets with VDJRegion or VDJRegionInFrame features. Transformed features are used for clonotype definition.
+          Apply IMGT, Kabat, or Chothia numbering. Requires datasets with VDJRegion or VDJRegionInFrame sequences or assembled on CDR3 (In this case, only the CDR3 region will be numbered). Transformed features are used for clonotype definition.
         </template>
       </PlDropdown>
     </PlAccordionSection>
