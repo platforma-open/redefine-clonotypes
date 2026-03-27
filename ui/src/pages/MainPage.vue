@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { PlAlert, PlBlockPage, PlBtnGhost, PlDropdown, PlDropdownMulti, PlDropdownRef, PlLogView, PlMaskIcon24, PlSlideModal } from '@platforma-sdk/ui-vue';
+import { PlAccordionSection, PlAlert, PlBlockPage, PlBtnGhost, PlDropdown, PlDropdownMulti, PlDropdownRef, PlLogView, PlMaskIcon24, PlSlideModal } from '@platforma-sdk/ui-vue';
 import { computed, ref, watchEffect } from 'vue';
 import { useApp } from '../app';
 
@@ -60,18 +60,20 @@ const numberingWarning = computed(() => {
       :options="app.model.outputs.clonotypeDefinitionOptions"
       :disabled="!app.model.args.anchorRef"
     />
-    <PlDropdown
-      v-model="app.model.args.numberingScheme"
-      label="Numbering schema"
-      placeholder="None"
-      :options="numberingSchemeOptions"
-      :disabled="numberingDisabled"
-      :clearable="true"
-    >
-      <template #tooltip>
-        Apply IMGT, Kabat, or Chothia numbering. Available only for datasets with VDJRegion or VDJRegionInFrame features. Transformed features are used for clonotype definition.
-      </template>
-    </PlDropdown>
+    <PlAccordionSection v-if="numberingAvailable" label="Advanced Settings">
+      <PlDropdown
+        v-model="app.model.args.numberingScheme"
+        label="Numbering schema"
+        placeholder="None"
+        :options="numberingSchemeOptions"
+        :disabled="numberingDisabled"
+        :clearable="true"
+      >
+        <template #tooltip>
+          Apply IMGT, Kabat, or Chothia numbering. Available only for datasets with VDJRegion or VDJRegionInFrame features. Transformed features are used for clonotype definition.
+        </template>
+      </PlDropdown>
+    </PlAccordionSection>
 
     <PlAlert v-if="!isValid" type="info">
       Please select a VDJ dataset and a new clonotype definition.
