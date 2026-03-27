@@ -44,6 +44,7 @@ export type BlockArgs = {
   anchorRef?: PlRef;
   clonotypeDefinition: SUniversalPColumnId[];
   numberingScheme?: 'imgt' | 'kabat' | 'chothia';
+  exportCdr3AaPositions?: boolean;
 };
 
 export const model = BlockModel.create()

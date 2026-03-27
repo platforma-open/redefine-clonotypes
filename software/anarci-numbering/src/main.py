@@ -280,6 +280,7 @@ def main() -> None:
     p.add_argument("--cdr_mapping_kl", required=False, help="CDR annotation mapping JSON for light chain")
     p.add_argument("--out_tsv", required=True, help="Output TSV path")
     p.add_argument("--stats_tsv", required=False, help="Output numbering stats TSV path")
+    p.add_argument("--positions_tsv", required=False, help="Output per-position CDR3 amino acid TSV path")
     args = p.parse_args()
 
     keys, seqs, fields = read_input_tsv(args.input_tsv)
@@ -360,6 +361,31 @@ def main() -> None:
             "unnumberedSamples": [";".join(unnumbered_samples)],
         }
         pl.DataFrame(stats_data).write_csv(args.stats_tsv, separator="\t")
+
+    # Write per-position CDR3 amino acid data
+    if args.positions_tsv:
+        chain_domain = {"H": "IGHeavy", "KL": "IGLight"}
+        pos_rows: List[List[str]] = []
+        unique_keys = list(dict.fromkeys(keys))
+        for key in unique_keys:
+            for chain in chains:
+                anarci_rows, pos_labels = anarci_by_chain[chain]
+                residues = anarci_rows.get(key) if anarci_rows and pos_labels else None
+                if residues is None:
+                    continue
+                ranges = REGION_RANGES[args.scheme][chain]
+                cdr3_start, cdr3_end = ranges["CDR3"]
+                for pos_label, residue in zip(pos_labels, residues):
+                    num = position_number(pos_label)
+                    if num is None or num < cdr3_start or num > cdr3_end:
+                        continue
+                    residue = (residue or "").strip()
+                    if residue in {"", "-", "."}:
+                        continue
+                    pos_rows.append([key, chain_domain[chain], pos_label, residue, "1"])
+        pl.DataFrame(
+            pos_rows, schema=["clonotypeKey", "chain", "position", "aminoacid", "count"], orient="row"
+        ).write_csv(args.positions_tsv, separator="\t")
 
 
 if __name__ == "__main__":
