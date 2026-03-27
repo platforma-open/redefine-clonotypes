@@ -144,6 +144,7 @@ wf.body(func(args) {
 	numberingTsv := undefined
 	numberingStatsTsv := undefined
 	anarciLog := undefined
+	positionsTsv := undefined
 	numberingChains := []
 	numberingChainSet := {}
 	cdr3Tsv := undefined
@@ -396,11 +397,15 @@ wf.body(func(args) {
 				isSingleCell: isSingleCell,
 				bulkChain: bulkChain,
 				cdrMappingH: cdrMappingH,
-				cdrMappingKL: cdrMappingKL
+				cdrMappingKL: cdrMappingKL,
+				exportCdr3AaPositions: args.exportCdr3AaPositions == true
 			})
 			numberingTsv = numbering.output("numbered", 24 * 60 * 60 * 1000)
 			numberingStatsTsv = numbering.output("numberingStats", 24 * 60 * 60 * 1000)
 			anarciLog = numbering.output("anarciLog")
+			if args.exportCdr3AaPositions == true {
+				positionsTsv = numbering.output("cdr3Positions", 24 * 60 * 60 * 1000)
+			}
 		}
 
 		///// Numbering based on CDR3 sequences (When VDJRegion is not available) /////
@@ -492,7 +497,7 @@ wf.body(func(args) {
 	}
 
 	mainAbundanceHeader := "abundance_" + mainAbundanceColIndex
-	
+
 	abundanceHeaders := {}
 	for i, col in abundanceCols {
 		header := "abundance_" + i
@@ -737,6 +742,16 @@ wf.body(func(args) {
 	}
 	df_abundances = df_abundances.withColumns(normExpressions...)
 	df_abundances.save("abundances.tsv")
+
+	// 5b. Expand per-position CDR3 amino acid data across samples
+	if positionsTsv != undefined {
+		positionsDf := ptWf.frame(positionsTsv, {xsvType: "tsv"})
+		positionsWithSample := df_abundances.
+			select(pt.col("sampleId"), pt.col("newClonotypeKey"), pt.col("clonotypeKey")).
+			join(positionsDf, {on: "clonotypeKey", how: "inner"}).
+			withoutColumns("clonotypeKey")
+		positionsWithSample.save("cdr3_positions.tsv")
+	}
 
 	// 6. Aggregate properties — for each new clonotype, pick the representative
 	// property values from the old clonotype with the highest primary abundance.
@@ -1125,6 +1140,82 @@ wf.body(func(args) {
 	}
 	finalPf := pfBuilder.build()
 
+	// Build per-position CDR3 amino acid p-frame for Graph Maker
+	cdr3PositionsExport := undefined
+	if positionsTsv != undefined {
+		cdr3PositionsTsvFile := ptResult.getFile("cdr3_positions.tsv")
+
+		// Deanonymize the positions TSV (sampleId axis was anonymized)
+		positionsDeanonimization := render.createEphemeral(
+			deanonimizationTpl,
+			{
+				mapping: mappingRef,
+				clusteringResult: cdr3PositionsTsvFile
+			}
+		)
+		cdr3PositionsTsvDeanon := positionsDeanonimization.output("deanonimizedTsv")
+
+		posSchemeLabel := numberingScheme == "imgt" ? "IMGT" : numberingScheme == "kabat" ? "Kabat" : "Chothia"
+		posLabel := posSchemeLabel + " CDR3 position"
+		posColumnLabel := posSchemeLabel + " CDR3 amino acid"
+		posDomain := {
+			"pl7.app/vdj/feature": "CDR3",
+			"pl7.app/vdj/numberingSchema": numberingScheme
+		}
+
+		cdr3PosPf := xsv.importFile(cdr3PositionsTsvDeanon, "tsv", {
+			axes: [
+				{ column: "sampleId", spec: sampleIdAxisSpec },
+				{ column: "newClonotypeKey", spec: newClonotypeKeySpec },
+				{ column: "chain", spec: {
+					name: "pl7.app/vdj/chain",
+					type: "String",
+					annotations: { "pl7.app/label": "Chain" }
+				}},
+				{ column: "position", spec: {
+					name: "pl7.app/vdj/numberingPosition",
+					type: "String",
+					domain: posDomain,
+					annotations: { "pl7.app/label": posLabel }
+				}}
+			],
+			columns: [
+				{
+					column: "aminoacid",
+					spec: {
+						name: "pl7.app/aminoacid",
+						valueType: "String",
+						domain: { "pl7.app/alphabet": "aminoacid" },
+						annotations: {
+							"pl7.app/label": posColumnLabel,
+							"pl7.app/discreteFilters": "true",
+							"pl7.app/table/visibility": "hidden"
+						}
+					}
+				},
+				{
+					column: "count",
+					spec: {
+						name: "pl7.app/count",
+						valueType: "Long",
+						annotations: {
+							"pl7.app/label": "AA Count by position",
+							"pl7.app/table/visibility": "hidden"
+						}
+					}
+				}
+			],
+			storageFormat: "Parquet",
+			partitionKeyLength: 1
+		}, { splitDataAndSpec: true, mem: "8GiB", cpu: 1 })
+
+		posPfBuilder := pframes.pFrameBuilder()
+		for k, v in cdr3PosPf {
+			posPfBuilder.add(k, trace.inject(v.spec), v.data)
+		}
+		cdr3PositionsExport = posPfBuilder.build()
+	}
+
 	outputs := {
 		statsTsvContent: statsTsvContent
 	}
@@ -1135,10 +1226,15 @@ wf.body(func(args) {
 		outputs.anarciLog = anarciLog
 	}
 
+	allExports := {
+		pf: finalPf
+	}
+	if cdr3PositionsExport != undefined {
+		allExports.cdr3AaPositions = cdr3PositionsExport
+	}
+
 	return {
 		outputs: outputs,
-		exports: {
-			pf: finalPf
-		}
+		exports: allExports
 	}
 })

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { PlAlert, PlBlockPage, PlBtnGhost, PlDropdown, PlDropdownMulti, PlDropdownRef, PlLogView, PlMaskIcon24, PlSlideModal } from '@platforma-sdk/ui-vue';
+import { PlAlert, PlBlockPage, PlBtnGhost, PlCheckbox, PlDropdown, PlDropdownMulti, PlDropdownRef, PlLogView, PlMaskIcon24, PlSlideModal } from '@platforma-sdk/ui-vue';
 import { computed, ref, watchEffect } from 'vue';
 import { useApp } from '../app';
 
@@ -20,6 +20,12 @@ watchEffect(() => {
   // Strict === false avoids clearing while the output is still loading (undefined).
   if (app.model.args.anchorRef === undefined || app.model.outputs.numberingAvailable === false) {
     app.model.args.numberingScheme = undefined;
+  }
+});
+
+watchEffect(() => {
+  if (app.model.args.numberingScheme === undefined) {
+    app.model.args.exportCdr3AaPositions = false;
   }
 });
 
@@ -72,6 +78,14 @@ const numberingWarning = computed(() => {
         Apply IMGT, Kabat, or Chothia numbering. Available only for datasets with VDJRegion or VDJRegionInFrame features. Transformed features are used for clonotype definition.
       </template>
     </PlDropdown>
+    <PlCheckbox
+      v-if="app.model.args.numberingScheme !== undefined"
+      :model-value="app.model.args.exportCdr3AaPositions ?? false"
+      :disabled="numberingDisabled"
+      @update:model-value="(v: boolean) => app.model.args.exportCdr3AaPositions = v"
+    >
+      Export CDR3 AA position table
+    </PlCheckbox>
 
     <PlAlert v-if="!isValid" type="info">
       Please select a VDJ dataset and a new clonotype definition.
