@@ -113,8 +113,38 @@ export const model = BlockModel.create()
     const anchorSpec = ctx.resultPool.getPColumnSpecByRef(anchor);
     if (!anchorSpec) return false;
 
+    // Detect single-cell input
     const isSingleCell = anchorSpec.axesSpec[1].name === 'pl7.app/vdj/scClonotypeKey';
 
+    const isChain = (col: { spec: { domain?: Record<string, string>; axesSpec?: { domain?: Record<string, string> }[] } },
+      scChain: string,
+      bulkChain: string) => {
+      if (isSingleCell) {
+        return col.spec.axesSpec?.[0]?.domain?.['pl7.app/vdj/receptor'] === 'IG'
+          && col.spec.domain?.['pl7.app/vdj/scClonotypeChain/index'] === 'primary'
+          && col.spec.domain?.['pl7.app/vdj/scClonotypeChain'] === scChain;
+      }
+      // @TODO: Remove spec.domain check if no block generates it (also from workflow)
+      return col.spec.domain?.['pl7.app/vdj/chain'] === bulkChain
+        || col.spec.axesSpec?.some((axis) => axis.domain?.['pl7.app/vdj/chain'] === bulkChain);
+    };
+
+    const hasRequiredChains = (columns: { spec: { domain?: Record<string, string>; axesSpec?: { domain?: Record<string, string> }[] } }[]) => {
+      const hasHeavy = columns.some((col) => isChain(col, 'A', 'IGHeavy'));
+      const hasLight = columns.some((col) => isChain(col, 'B', 'IGLight'));
+      return isSingleCell ? (hasHeavy && hasLight) : (hasHeavy || hasLight);
+    };
+
+    // Detect scFv mode: individual chain sequences are not marked as
+    // assembling features / main sequences, so filters must be relaxed.
+    const scFvCols = ctx.resultPool.getAnchoredPColumns(
+      { main: anchor },
+      [{ axes: [{ anchor: 'main', idx: 1 }], name: 'pl7.app/vdj/scFv-sequence' }],
+      { ignoreMissingDomains: true },
+    );
+    const isScFv = (scFvCols ?? []).length > 0;
+
+    // VDJRegion path: AA sequences
     const vdjRegionAa = ctx.resultPool.getAnchoredPColumns(
       { main: anchor },
       [{
@@ -135,36 +165,16 @@ export const model = BlockModel.create()
       { ignoreMissingDomains: true },
     );
 
-    const assemblingVdj = (vdjRegionAa ?? []).filter((col) =>
-      col.spec.annotations?.['pl7.app/vdj/isAssemblingFeature'] === 'true');
+    // Select valid VDJRegion/VDJRegionInFrame AA columns for numbering
+    const vdjCandidates = isScFv
+      ? (vdjRegionAa ?? [])
+      : (vdjRegionAa ?? []).filter((col) =>
+          col.spec.annotations?.['pl7.app/vdj/isAssemblingFeature'] === 'true');
+    // If the selected columns cover the required chains allow numbering with ANARCI
+    if (hasRequiredChains(vdjCandidates)) return true;
 
-    const hasHeavy = assemblingVdj.some((col) => {
-      if (isSingleCell) {
-        const receptor = col.spec.axesSpec?.[0]?.domain?.['pl7.app/vdj/receptor'];
-        if (receptor !== 'IG') return false;
-        const index = col.spec.domain?.['pl7.app/vdj/scClonotypeChain/index'];
-        if (index !== 'primary') return false;
-        return col.spec.domain?.['pl7.app/vdj/scClonotypeChain'] === 'A';
-      }
-      return col.spec.domain?.['pl7.app/vdj/chain'] === 'IGHeavy'
-        || col.spec.axesSpec?.some((axis) => axis.domain?.['pl7.app/vdj/chain'] === 'IGHeavy');
-    });
-    const hasLight = assemblingVdj.some((col) => {
-      if (isSingleCell) {
-        const receptor = col.spec.axesSpec?.[0]?.domain?.['pl7.app/vdj/receptor'];
-        if (receptor !== 'IG') return false;
-        const index = col.spec.domain?.['pl7.app/vdj/scClonotypeChain/index'];
-        if (index !== 'primary') return false;
-        return col.spec.domain?.['pl7.app/vdj/scClonotypeChain'] === 'B';
-      }
-      return col.spec.domain?.['pl7.app/vdj/chain'] === 'IGLight'
-        || col.spec.axesSpec?.some((axis) => axis.domain?.['pl7.app/vdj/chain'] === 'IGLight');
-    });
-
-    const vdjOk = isSingleCell ? (hasHeavy && hasLight) : (hasHeavy || hasLight);
-    if (vdjOk) return true;
-
-    const cdr3MainAa = ctx.resultPool.getAnchoredPColumns(
+    // CDR3 fallback: AA sequences
+    const cdr3Aa = ctx.resultPool.getAnchoredPColumns(
       { main: anchor },
       [{
         axes: [{ anchor: 'main', idx: 1 }],
@@ -173,50 +183,17 @@ export const model = BlockModel.create()
           'pl7.app/vdj/feature': 'CDR3',
           'pl7.app/alphabet': 'aminoacid',
         },
-      }, {
-        axes: [{ anchor: 'main', idx: 1 }],
-        name: 'pl7.app/vdj/sequence',
-        domain: {
-          'pl7.app/vdj/feature': 'CDR3',
-        },
       }],
       { ignoreMissingDomains: true },
     );
 
-    if (!cdr3MainAa || cdr3MainAa.length === 0) return false;
-
-    const cdr3MainFiltered = cdr3MainAa.filter((col) =>
-      col.spec.annotations?.['pl7.app/vdj/isMainSequence'] === 'true');
-    const cdr3Candidates = cdr3MainFiltered.length > 0 ? cdr3MainFiltered : cdr3MainAa;
-
-    const hasCdr3Heavy = cdr3Candidates.some((col) => {
-      if (isSingleCell) {
-        const receptor = col.spec.axesSpec?.[0]?.domain?.['pl7.app/vdj/receptor'];
-        if (receptor && receptor !== 'IG') return false;
-        const index = col.spec.domain?.['pl7.app/vdj/scClonotypeChain/index'];
-        if (index && index !== 'primary') return false;
-        return col.spec.domain?.['pl7.app/vdj/scClonotypeChain'] === 'A';
-      }
-      return col.spec.domain?.['pl7.app/vdj/chain'] === 'IGHeavy'
-        || col.spec.axesSpec?.some((axis) => axis.domain?.['pl7.app/vdj/chain'] === 'IGHeavy');
-    });
-    const hasCdr3Light = cdr3Candidates.some((col) => {
-      if (isSingleCell) {
-        const receptor = col.spec.axesSpec?.[0]?.domain?.['pl7.app/vdj/receptor'];
-        if (receptor && receptor !== 'IG') return false;
-        const index = col.spec.domain?.['pl7.app/vdj/scClonotypeChain/index'];
-        if (index && index !== 'primary') return false;
-        return col.spec.domain?.['pl7.app/vdj/scClonotypeChain'] === 'B';
-      }
-      return col.spec.domain?.['pl7.app/vdj/chain'] === 'IGLight'
-        || col.spec.axesSpec?.some((axis) => axis.domain?.['pl7.app/vdj/chain'] === 'IGLight');
-    });
-
-    if (isSingleCell) {
-      if (hasCdr3Heavy && hasCdr3Light) return true;
-      return cdr3Candidates.length > 0;
-    }
-    return hasCdr3Heavy || hasCdr3Light || cdr3Candidates.length > 0;
+    // Select valid CDR3 AA columns for numbering
+    const cdr3Candidates = isScFv
+      ? (cdr3Aa ?? [])
+      : (cdr3Aa ?? []).filter((col) =>
+          col.spec.annotations?.['pl7.app/vdj/isMainSequence'] === 'true');
+    // If the selected columns cover the required chains allow numbering with in-house script
+    return hasRequiredChains(cdr3Candidates);
   }, { retentive: true })
 
   .output('stats', (ctx) => {
