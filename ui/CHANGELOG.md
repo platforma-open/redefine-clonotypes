@@ -1,5 +1,13 @@
 # @platforma-open/milaboratories.redefine-clonotypes.ui
 
+## 1.6.1
+
+### Patch Changes
+
+- 807e790: Hide numbering when not posible
+- Updated dependencies [807e790]
+  - @platforma-open/milaboratories.redefine-clonotypes.model@1.6.1
+
 ## 1.6.0
 
 ### Minor Changes
