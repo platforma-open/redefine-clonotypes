@@ -187,11 +187,8 @@ export const model = BlockModel.create()
       { ignoreMissingDomains: true },
     );
 
-    // Select valid CDR3 AA columns for numbering
-    const cdr3Candidates = isScFv
-      ? (cdr3Aa ?? [])
-      : (cdr3Aa ?? []).filter((col) =>
-          col.spec.annotations?.['pl7.app/vdj/isMainSequence'] === 'true');
+    // CDR3 numbering is available for any dataset with CDR3 AA sequences
+    const cdr3Candidates = cdr3Aa ?? [];
     // If the selected columns cover the required chains allow numbering with in-house script
     return hasRequiredChains(cdr3Candidates);
   }, { retentive: true })

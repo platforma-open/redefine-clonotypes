@@ -87,13 +87,12 @@ wf.prepare(func(args) {
 		annotations: { "pl7.app/vdj/isAssemblingFeature": "true" }
 	}, "vdjRegionSeqs")
 
-	// CDR3 main sequences (AA/NT)
+	// CDR3 sequences (AA/NT) for numbering fallback
 	bundleBuilder.addMulti({
 		axes: [{ anchor: "main", idx: 1 }],
 		name: "pl7.app/vdj/sequence",
-		annotations: { "pl7.app/vdj/isMainSequence": "true" },
 		domain: { "pl7.app/vdj/feature": "CDR3" }
-	}, "cdr3MainSeqs")
+	}, "cdr3Seqs")
 
 	// Detect scFv sequences to identify scFv mode
 	bundleBuilder.addMulti({
@@ -280,7 +279,7 @@ wf.body(func(args) {
 		}
 
 		// CDR3-only fallback (main sequence)
-		cdr3Cols := columns.getColumns("cdr3MainSeqs")
+		cdr3Cols := columns.getColumns("cdr3Seqs")
 		cdr3AaByChain := {}
 		cdr3NtByChain := {}
 		for _, col in cdr3Cols {
@@ -304,31 +303,6 @@ wf.body(func(args) {
 				cdr3AaByChain[chainKey] = col
 			} else if alphabet == "nucleotide" && is_undefined(cdr3NtByChain[chainKey]) {
 				cdr3NtByChain[chainKey] = col
-			}
-		}
-
-		if isScFv {
-			for _, col in propertyCols {
-				if col.spec.name != "pl7.app/vdj/sequence" { continue }
-				if col.spec.domain["pl7.app/vdj/feature"] != "CDR3" { continue }
-
-				chain := undefined
-				// scFv is always single-cell
-				receptor := col.spec.axesSpec[0].domain["pl7.app/vdj/receptor"]
-				if receptor != "IG" { continue }
-				index := col.spec.domain["pl7.app/vdj/scClonotypeChain/index"]
-				if index != "primary" { continue }
-				scChain := col.spec.domain["pl7.app/vdj/scClonotypeChain"]
-				chain = scChain == "A" ? "IGHeavy" : scChain == "B" ? "IGLight" : undefined
-				
-				alphabet := col.spec.domain["pl7.app/alphabet"]
-				chainKey := chain == "IGHeavy" ? "H" : chain == "IGLight" ? "KL" : undefined
-				if chainKey == undefined { continue }
-				if alphabet == "aminoacid" && is_undefined(cdr3AaByChain[chainKey]) {
-					cdr3AaByChain[chainKey] = col
-				} else if alphabet == "nucleotide" && is_undefined(cdr3NtByChain[chainKey]) {
-					cdr3NtByChain[chainKey] = col
-				}
 			}
 		}
 
