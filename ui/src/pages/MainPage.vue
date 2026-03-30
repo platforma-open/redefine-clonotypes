@@ -1,27 +1,57 @@
 <script setup lang="ts">
+import type { PlRef } from '@platforma-sdk/model';
 import { PlAccordionSection, PlAlert, PlBlockPage, PlBtnGhost, PlDropdown, PlDropdownMulti, PlDropdownRef, PlLogView, PlMaskIcon24, PlSlideModal } from '@platforma-sdk/ui-vue';
-import { computed, ref, watchEffect } from 'vue';
+import { computed, ref, watch, watchEffect } from 'vue';
 import { useApp } from '../app';
 
 const app = useApp();
 const anarciLogOpen = ref(false);
 
-const isValid = computed(() => app.model.args.anchorRef !== undefined && (app.model.args.clonotypeDefinition?.length ?? 0) > 0);
+const isValid = computed(() =>
+  app.model.args.mixcrRunRef !== undefined
+  && app.model.args.selectedChainRefs.length > 0
+  && (app.model.args.clonotypeDefinition?.length ?? 0) > 0,
+);
+
 const numberingAvailable = computed(() => app.model.outputs.numberingAvailable === true);
-const numberingDisabled = computed(() => !app.model.args.anchorRef || !numberingAvailable.value);
+const numberingDisabled = computed(() => app.model.args.selectedChainRefs.length === 0 || !numberingAvailable.value);
+
+const showChainSelector = computed(() => (app.model.outputs.chainOptions?.length ?? 0) > 1);
+
 const numberingSchemeOptions = [
   { label: 'IMGT', value: 'imgt' },
   { label: 'Kabat', value: 'kabat' },
   { label: 'Chothia', value: 'chothia' },
 ];
 
+// Reset numbering scheme when run is cleared or numbering becomes unavailable
 watchEffect(() => {
-  // Reset scheme when dataset is cleared OR when the selected dataset does not support numbering.
-  // Strict === false avoids clearing while the output is still loading (undefined).
-  if (app.model.args.anchorRef === undefined || app.model.outputs.numberingAvailable === false) {
+  if (app.model.args.mixcrRunRef === undefined || app.model.outputs.numberingAvailable === false) {
     app.model.args.numberingScheme = undefined;
   }
 });
+
+// Stable fingerprint of chain options to detect real changes (not re-renders)
+const chainOptionsKey = computed(() => {
+  const options = app.model.outputs.chainOptions;
+  if (!options || options.length === 0) return '';
+  return options.map((opt) => opt.label).join('\0');
+});
+
+// Auto-select all chains when the available options actually change
+watch(chainOptionsKey, () => {
+  const options = app.model.outputs.chainOptions;
+  if (options && options.length > 0) {
+    app.model.args.selectedChainRefs = options.map((opt) => opt.value);
+  }
+}, { immediate: true });
+
+function setMixcrRun(newRef: PlRef | undefined) {
+  app.model.args.mixcrRunRef = newRef;
+  app.model.args.selectedChainRefs = [];
+  app.model.args.numberingScheme = undefined;
+  app.model.args.clonotypeDefinition = [];
+}
 
 const inputIsEmpty = computed(() => {
   const stats = app.model.outputs.stats;
@@ -50,15 +80,25 @@ const numberingWarning = computed(() => {
     title="Redefine Clonotypes"
   >
     <PlDropdownRef
-      v-model="app.model.args.anchorRef"
-      label="VDJ dataset"
-      :options="app.model.outputs.datasetOptions"
+      v-model="app.model.args.mixcrRunRef"
+      label="MiXCR Run"
+      :options="app.model.outputs.mixcrRunOptions"
+      @update:model-value="setMixcrRun"
     />
+
+    <PlDropdownMulti
+      v-if="showChainSelector"
+      v-model="app.model.args.selectedChainRefs"
+      label="Select Chains"
+      :options="app.model.outputs.chainOptions"
+      :disabled="!app.model.args.mixcrRunRef"
+    />
+
     <PlDropdownMulti
       v-model="app.model.args.clonotypeDefinition"
       label="New clonotype definition"
       :options="app.model.outputs.clonotypeDefinitionOptions"
-      :disabled="!app.model.args.anchorRef"
+      :disabled="app.model.args.selectedChainRefs.length === 0"
     />
     <PlAccordionSection v-if="numberingAvailable" label="Advanced Settings">
       <PlDropdown
@@ -76,7 +116,7 @@ const numberingWarning = computed(() => {
     </PlAccordionSection>
 
     <PlAlert v-if="!isValid" type="info">
-      Please select a VDJ dataset and a new clonotype definition.
+      Please select a MiXCR run, chains, and a new clonotype definition.
     </PlAlert>
     <template v-else-if="!app.model.outputs.isRunning">
       <PlAlert v-if="numberingWarning" type="warn">
