@@ -38,10 +38,13 @@ const chainOptionsKey = computed(() => {
   return options.map((opt) => opt.label).join('\0');
 });
 
-// Auto-select all chains when the available options actually change
+// Auto-select all chains on initial load or when options genuinely change (e.g., run switch).
+// Skip if user already has a selection to avoid overriding manual deselections.
 watch(chainOptionsKey, () => {
   const options = app.model.outputs.chainOptions;
-  if (options && options.length > 0) {
+  if (!options || options.length === 0) return;
+  // Only auto-select when no chains are selected (initial load or after setMixcrRun clears them)
+  if (app.model.args.selectedChainRefs.length === 0) {
     app.model.args.selectedChainRefs = options.map((opt) => opt.value);
   }
 }, { immediate: true });
