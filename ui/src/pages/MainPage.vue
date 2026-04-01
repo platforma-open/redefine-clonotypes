@@ -59,6 +59,19 @@ function setMixcrRun(newRef: PlRef | undefined) {
 // Per-chain labels from the last completed run
 const chainLabels = computed(() => (app.model.outputs.runChainLabels as string[] | undefined) ?? []);
 
+// Snapshot the mixcrRunRef when results become available.
+// Used to hide stale results when the user switches to a different dataset.
+const resultsRunRef = ref<unknown>(undefined);
+watch(() => app.model.outputs.perChainStats, (stats) => {
+  if (stats && stats.length > 0) {
+    resultsRunRef.value = JSON.stringify(app.model.args.mixcrRunRef);
+  }
+});
+const resultsMatchCurrentArgs = computed(() => {
+  if (!resultsRunRef.value) return false;
+  return resultsRunRef.value === JSON.stringify(app.model.args.mixcrRunRef);
+});
+
 const hasAnyAnarciLog = computed(() =>
   app.model.outputs.perChainAnarciLog?.some((log) => log != null) ?? false,
 );
@@ -125,7 +138,7 @@ function numberingWarningForChain(ns: { total: number; numbered: number } | unde
     <PlAlert v-if="!isValid" type="info">
       Please select a MiXCR run, chains, and a new clonotype definition.
     </PlAlert>
-    <template v-else-if="!app.model.outputs.isRunning">
+    <template v-else-if="!app.model.outputs.isRunning && resultsMatchCurrentArgs">
       <div style="display: flex; align-items: center; justify-content: space-between;">
         <h3 style="margin: 0;">Results</h3>
         <PlBtnGhost v-if="hasAnyAnarciLog" @click.stop="() => (anarciLogOpen = true)">

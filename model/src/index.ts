@@ -61,10 +61,13 @@ export const model = BlockModel.create()
   .output('mixcrRunOptions', (ctx) =>
     ctx.resultPool.getOptions([
       {
-        name: 'mixcr.com/clns', // The main clns file represents the run
+        name: 'mixcr.com/clns', // MiXCR cloneset file
+      },
+      {
+        name: 'pl7.app/vdj/run', // Import VDJ run marker
       },
     ], {
-      label: { includeNativeLabel: false, forceTraceElements: ['milaboratories.samples-and-data/dataset'] }, // We'll rely on block label from trace if possible, or standard label
+      label: { includeNativeLabel: false, forceTraceElements: ['milaboratories.samples-and-data/dataset'] },
     }),
   )
 
