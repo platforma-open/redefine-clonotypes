@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.redefine-clonotypes.workflow
 
+## 1.7.1
+
+### Patch Changes
+
+- bef4263: Update anarci software package version to fix container start command
+
 ## 1.7.0
 
 ### Minor Changes
