@@ -57,6 +57,51 @@ toCombinedDomainValue := func(spec) {
     return result
 }
 
+// Maps receptor type + scClonotypeChain position to actual chain domain.
+// Used to produce correct output specs for any receptor type (IG, TCRAB, TCRGD).
+scChainToDomain := {
+	"IG":    { "A": "IGHeavy",   "B": "IGLight" },
+	"TCRAB": { "A": "TCRBeta",   "B": "TCRAlpha" },
+	"TCRGD": { "A": "TCRDelta",  "B": "TCRGamma" }
+}
+
+// Maps chain domain to human-readable label for numbering output specs.
+chainLabelMap := {
+	"IGHeavy": "Heavy", "IGLight": "Light",
+	"TCRAlpha": "Alpha", "TCRBeta": "Beta",
+	"TCRGamma": "Gamma", "TCRDelta": "Delta"
+}
+
+// Resolves chain identity from a column spec.
+// Returns { chainKey: "H" or "KL", chainDomain: e.g. "IGHeavy" } or undefined.
+// For single-cell: uses receptor + scClonotypeChain to derive actual chain domain.
+// For bulk: reads pl7.app/vdj/chain directly from the spec.
+resolveChain := func(col, isSingleCell) {
+	chain := undefined
+	if isSingleCell {
+		index := col.spec.domain["pl7.app/vdj/scClonotypeChain/index"]
+		if index != "primary" { return undefined }
+		scChain := col.spec.domain["pl7.app/vdj/scClonotypeChain"]
+		if scChain != "A" && scChain != "B" { return undefined }
+		receptor := col.spec.axesSpec[0].domain["pl7.app/vdj/receptor"]
+		receptorMap := scChainToDomain[receptor]
+		if receptorMap == undefined { return undefined }
+		chain = receptorMap[scChain]
+	} else {
+		chain = col.spec.axesSpec[0].domain["pl7.app/vdj/chain"]
+	}
+	if chain == undefined { return undefined }
+	// Map to internal key: first chain in pair → H, second → KL
+	chainKey := undefined
+	if chain == "IGHeavy" || chain == "TCRBeta" || chain == "TCRDelta" {
+		chainKey = "H"
+	} else if chain == "IGLight" || chain == "TCRAlpha" || chain == "TCRGamma" {
+		chainKey = "KL"
+	}
+	if chainKey == undefined { return undefined }
+	return { chainKey: chainKey, chainDomain: chain }
+}
+
 // Remaps anchor references in a serialized canonical column ID.
 // Used to redirect definition column IDs from "main" anchor to per-chain anchors.
 remapAnchor := func(colIdStr, fromAnchor, toAnchor) {
@@ -187,6 +232,9 @@ wf.body(func(args) {
 			}
 		}
 
+		// Populated during chain detection; maps H/KL to the actual domain (e.g., "TCRBeta")
+		chainDomainByKey := {}
+
 		numberingRegions := ["FR1", "CDR1", "FR2", "CDR2", "FR3", "CDR3", "FR4"]
 		numberingScheme := args.numberingScheme
 		numberingEnabled := numberingScheme != undefined
@@ -218,15 +266,9 @@ wf.body(func(args) {
 			hasCdrAnnotationColumns = true
 			header := "property_" + i
 			chainKey := undefined
-			if isSingleCell {
-				scChain := col.spec.domain["pl7.app/vdj/scClonotypeChain"]
-				chainKey = scChain == "A" ? "H" : scChain == "B" ? "KL" : undefined
-			} else {
-				chainDomain := col.spec.domain["pl7.app/vdj/chain"]
-				if chainDomain == undefined {
-					chainDomain = col.spec.axesSpec[0].domain["pl7.app/vdj/chain"]
-				}
-				chainKey = chainDomain == "IGHeavy" ? "H" : chainDomain == "IGLight" ? "KL" : undefined
+			resolved := resolveChain(col, isSingleCell)
+			if resolved != undefined {
+				chainKey = resolved.chainKey
 			}
 			if chainKey != undefined {
 				cdrAnnotationHeaderChain[header] = chainKey
@@ -271,21 +313,11 @@ wf.body(func(args) {
 			for _, col in vdjRegionCols {
 				feature := col.spec.domain["pl7.app/vdj/feature"]
 				if is_undefined(allowedFeatures[feature]) { continue }
-				chain := undefined
-				if isSingleCell {
-					receptor := col.spec.axesSpec[0].domain["pl7.app/vdj/receptor"]
-					if receptor != "IG" { continue }
-					index := col.spec.domain["pl7.app/vdj/scClonotypeChain/index"]
-					if index != "primary" { continue }
-					scChain := col.spec.domain["pl7.app/vdj/scClonotypeChain"]
-					chain = scChain == "A" ? "IGHeavy" : scChain == "B" ? "IGLight" : undefined
-				} else {
-					chain = col.spec.axesSpec[0].domain["pl7.app/vdj/chain"]
-					if chain == undefined { chain = col.spec.domain["pl7.app/vdj/chain"] }
-				}
+				resolved := resolveChain(col, isSingleCell)
+				if resolved == undefined { continue }
+				chainKey := resolved.chainKey
+				chainDomainByKey[chainKey] = resolved.chainDomain
 				alphabet := col.spec.domain["pl7.app/alphabet"]
-				chainKey := chain == "IGHeavy" ? "H" : chain == "IGLight" ? "KL" : undefined
-				if chainKey == undefined { continue }
 				if alphabet == "aminoacid" && is_undefined(aaByChain[chainKey]) {
 					aaByChain[chainKey] = col
 				} else if alphabet == "nucleotide" && is_undefined(ntByChain[chainKey]) {
@@ -305,22 +337,14 @@ wf.body(func(args) {
 			if isScFv && (!hasH || !hasKL) {
 				for _, col in propertyCols {
 					if col.spec.name != "pl7.app/vdj/sequence" { continue }
-
 					feature := col.spec.domain["pl7.app/vdj/feature"]
 					if is_undefined(allowedFeatures[feature]) { continue }
-					
-					chain := undefined
 					// scFv is always single-cell
-					receptor := col.spec.axesSpec[0].domain["pl7.app/vdj/receptor"]
-					if receptor != "IG" { continue }
-					index := col.spec.domain["pl7.app/vdj/scClonotypeChain/index"]
-					if index != "primary" { continue }
-					scChain := col.spec.domain["pl7.app/vdj/scClonotypeChain"]
-					chain = scChain == "A" ? "IGHeavy" : scChain == "B" ? "IGLight" : undefined
-					
+					resolved := resolveChain(col, true)
+					if resolved == undefined { continue }
+					chainKey := resolved.chainKey
+					chainDomainByKey[chainKey] = resolved.chainDomain
 					alphabet := col.spec.domain["pl7.app/alphabet"]
-					chainKey := chain == "IGHeavy" ? "H" : chain == "IGLight" ? "KL" : undefined
-					if chainKey == undefined { continue }
 					if alphabet == "aminoacid" && is_undefined(aaByChain[chainKey]) {
 						aaByChain[chainKey] = col
 					} else if alphabet == "nucleotide" && is_undefined(ntByChain[chainKey]) {
@@ -337,21 +361,11 @@ wf.body(func(args) {
 			cdr3NtByChain := {}
 			for _, col in cdr3Cols {
 				if col.spec.domain["pl7.app/vdj/feature"] != "CDR3" { continue }
-				chain := undefined
-				if isSingleCell {
-					receptor := col.spec.axesSpec[0].domain["pl7.app/vdj/receptor"]
-					if receptor != "IG" { continue }
-					index := col.spec.domain["pl7.app/vdj/scClonotypeChain/index"]
-					if index != "primary" { continue }
-					scChain := col.spec.domain["pl7.app/vdj/scClonotypeChain"]
-					chain = scChain == "A" ? "IGHeavy" : scChain == "B" ? "IGLight" : undefined
-				} else {
-					chain = col.spec.axesSpec[0].domain["pl7.app/vdj/chain"]
-					if chain == undefined { chain = col.spec.domain["pl7.app/vdj/chain"] }
-				}
+				resolved := resolveChain(col, isSingleCell)
+				if resolved == undefined { continue }
+				chainKey := resolved.chainKey
+				chainDomainByKey[chainKey] = resolved.chainDomain
 				alphabet := col.spec.domain["pl7.app/alphabet"]
-				chainKey := chain == "IGHeavy" ? "H" : chain == "IGLight" ? "KL" : undefined
-				if chainKey == undefined { continue }
 				if alphabet == "aminoacid" && is_undefined(cdr3AaByChain[chainKey]) {
 					cdr3AaByChain[chainKey] = col
 				} else if alphabet == "nucleotide" && is_undefined(cdr3NtByChain[chainKey]) {
@@ -363,19 +377,12 @@ wf.body(func(args) {
 				for _, col in propertyCols {
 					if col.spec.name != "pl7.app/vdj/sequence" { continue }
 					if col.spec.domain["pl7.app/vdj/feature"] != "CDR3" { continue }
-
-					chain := undefined
 					// scFv is always single-cell
-					receptor := col.spec.axesSpec[0].domain["pl7.app/vdj/receptor"]
-					if receptor != "IG" { continue }
-					index := col.spec.domain["pl7.app/vdj/scClonotypeChain/index"]
-					if index != "primary" { continue }
-					scChain := col.spec.domain["pl7.app/vdj/scClonotypeChain"]
-					chain = scChain == "A" ? "IGHeavy" : scChain == "B" ? "IGLight" : undefined
-					
+					resolved := resolveChain(col, true)
+					if resolved == undefined { continue }
+					chainKey := resolved.chainKey
+					chainDomainByKey[chainKey] = resolved.chainDomain
 					alphabet := col.spec.domain["pl7.app/alphabet"]
-					chainKey := chain == "IGHeavy" ? "H" : chain == "IGLight" ? "KL" : undefined
-					if chainKey == undefined { continue }
 					if alphabet == "aminoacid" && is_undefined(cdr3AaByChain[chainKey]) {
 						cdr3AaByChain[chainKey] = col
 					} else if alphabet == "nucleotide" && is_undefined(cdr3NtByChain[chainKey]) {
@@ -496,8 +503,9 @@ wf.body(func(args) {
 					numberingChainSet[chainKey] = true
 					numberingChains = append(numberingChains, chainKey)
 				}
-				chainDomain := chainKey == "H" ? "IGHeavy" : "IGLight"
-				chainLabel := chainKey == "H" ? "Heavy" : "Light"
+				chainDomain := chainDomainByKey[chainKey]
+				ll.assert(chainDomain != undefined, "Chain domain not found for key %s", chainKey)
+				chainLabel := chainLabelMap[chainDomain]
 				for _, region in numberingRegions {
 					for _, alphabet in ["aminoacid", "nucleotide"] {
 						header := numberingScheme + "_" + region + "_" + (alphabet == "aminoacid" ? "aa" : "nt") + "_" + chainKey
@@ -579,22 +587,9 @@ wf.body(func(args) {
 			useNumbered := false
 			feature := col.spec.domain["pl7.app/vdj/feature"]
 			if numberingEnabled && col.spec.name == "pl7.app/vdj/sequence" && col.spec.annotations["pl7.app/vdj/isAssemblingFeature"] == "true" && (feature == "VDJRegion" || feature == "VDJRegionInFrame") {
-				chain := undefined
-				if isSingleCell {
-					receptor := col.spec.axesSpec[0].domain["pl7.app/vdj/receptor"]
-					if receptor != "IG" { chain = undefined } else {
-						index := col.spec.domain["pl7.app/vdj/scClonotypeChain/index"]
-						if index != "primary" { chain = undefined } else {
-							scChain := col.spec.domain["pl7.app/vdj/scClonotypeChain"]
-							chain = scChain == "A" ? "IGHeavy" : scChain == "B" ? "IGLight" : undefined
-						}
-					}
-				} else {
-					chain = col.spec.axesSpec[0].domain["pl7.app/vdj/chain"]
-					if chain == undefined { chain = col.spec.domain["pl7.app/vdj/chain"] }
-				}
+				resolved := resolveChain(col, isSingleCell)
 				alphabet := col.spec.domain["pl7.app/alphabet"]
-				chainKey := chain == "IGHeavy" ? "H" : chain == "IGLight" ? "KL" : undefined
+				chainKey := resolved != undefined ? resolved.chainKey : undefined
 				if chainKey != undefined && (alphabet == "aminoacid" || alphabet == "nucleotide") {
 					headerNum := numberingScheme + "_" + feature + "_" + (alphabet == "aminoacid" ? "aa" : "nt") + "_" + chainKey
 					appendDefinition(headerNum, numberingLabels[headerNum], numberingSpecs[headerNum])
@@ -798,22 +793,9 @@ wf.body(func(args) {
 		for h, col in propertyHeaders {
 			if col.spec.name != "pl7.app/vdj/sequence" { continue }
 			feature := col.spec.domain["pl7.app/vdj/feature"]
-			chain := undefined
-			if isSingleCell {
-				receptor := col.spec.axesSpec[0].domain["pl7.app/vdj/receptor"]
-				if receptor == "IG" {
-					index := col.spec.domain["pl7.app/vdj/scClonotypeChain/index"]
-					if index == "primary" {
-						scChain := col.spec.domain["pl7.app/vdj/scClonotypeChain"]
-						chain = scChain == "A" ? "IGHeavy" : scChain == "B" ? "IGLight" : undefined
-					}
-				}
-			} else {
-				chain = col.spec.axesSpec[0].domain["pl7.app/vdj/chain"]
-				if chain == undefined { chain = col.spec.domain["pl7.app/vdj/chain"] }
-			}
+			resolved := resolveChain(col, isSingleCell)
+			chainKey := resolved != undefined ? resolved.chainKey : undefined
 			alphabet := col.spec.domain["pl7.app/alphabet"]
-			chainKey := chain == "IGHeavy" ? "H" : chain == "IGLight" ? "KL" : undefined
 			if chainKey != undefined && alphabet != undefined && feature != undefined {
 				existingSeqKeys[feature + "|" + alphabet + "|" + chainKey] = true
 			}
@@ -936,22 +918,9 @@ wf.body(func(args) {
 					feature = undefined
 				}
 				mappedFeature := feature
-				chain := undefined
-				if isSingleCell {
-					receptor := col.spec.axesSpec[0].domain["pl7.app/vdj/receptor"]
-					if receptor == "IG" {
-						index := col.spec.domain["pl7.app/vdj/scClonotypeChain/index"]
-						if index == "primary" {
-							scChain := col.spec.domain["pl7.app/vdj/scClonotypeChain"]
-							chain = scChain == "A" ? "IGHeavy" : scChain == "B" ? "IGLight" : undefined
-						}
-					}
-				} else {
-					chain = col.spec.axesSpec[0].domain["pl7.app/vdj/chain"]
-					if chain == undefined { chain = col.spec.domain["pl7.app/vdj/chain"] }
-				}
+				resolved := resolveChain(col, isSingleCell)
+				chainKey := resolved != undefined ? resolved.chainKey : undefined
 				alphabet := col.spec.domain["pl7.app/alphabet"]
-				chainKey := chain == "IGHeavy" ? "H" : chain == "IGLight" ? "KL" : undefined
 				if mappedFeature != undefined && chainKey != undefined && (alphabet == "aminoacid" || alphabet == "nucleotide") {
 					headerNum := numberingScheme + "_" + mappedFeature + "_" + (alphabet == "aminoacid" ? "aa" : "nt") + "_" + chainKey
 					if useCdr3Numbering && feature == "CDR3" {
@@ -1185,6 +1154,8 @@ wf.body(func(args) {
 		}
 
 	} // end per-chain loop
+
+	outputs.nChains = len(args.selectedChainRefs)
 
 	return {
 		outputs: outputs,
