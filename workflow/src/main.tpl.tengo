@@ -72,6 +72,14 @@ chainLabelMap := {
 	"TCRGamma": "Gamma", "TCRDelta": "Delta"
 }
 
+// Maps chain/receptor domain values to friendly display names for UI.
+friendlyChainName := {
+	"IGHeavy": "IG Heavy", "IGLight": "IG Light",
+	"TCRAlpha": "TCR Alpha", "TCRBeta": "TCR Beta",
+	"TCRGamma": "TCR Gamma", "TCRDelta": "TCR Delta",
+	"IG": "IG", "TCRAB": "TCR Alpha/Beta", "TCRGD": "TCR Gamma/Delta"
+}
+
 // Resolves chain identity from a column spec.
 // Returns { chainKey: "H" or "KL", chainDomain: e.g. "IGHeavy" } or undefined.
 // For single-cell: uses receptor + scClonotypeChain to derive actual chain domain.
@@ -198,6 +206,7 @@ wf.body(func(args) {
 
 	pfBuilder := pframes.pFrameBuilder()
 	outputs := {}
+	chainLabels := []
 
 	for chainIdx, chainRef in args.selectedChainRefs {
 		anchor := "chain_" + chainIdx
@@ -972,6 +981,17 @@ wf.body(func(args) {
 
 		// Construct output PFrame specs — define axes, columns, and trace
 		datasetSpec := columns.getSpec(chainRef)
+
+		// Derive chain label from axis domain
+		chainDomainKey := clonotypeKeyAxisSpec.domain["pl7.app/vdj/chain"]
+		if chainDomainKey == undefined {
+			chainDomainKey = clonotypeKeyAxisSpec.domain["pl7.app/vdj/receptor"]
+		}
+		chainLabel := friendlyChainName[chainDomainKey]
+		if chainLabel == undefined {
+			chainLabel = chainDomainKey != undefined ? chainDomainKey : "Chain " + chainIdx
+		}
+		chainLabels = append(chainLabels, chainLabel)
 		
 		// Use customBlockLabel if user edited it, otherwise use defaultBlockLabel
 		traceLabel := args.customBlockLabel
@@ -1156,6 +1176,7 @@ wf.body(func(args) {
 	} // end per-chain loop
 
 	outputs.nChains = len(args.selectedChainRefs)
+	outputs.chainLabels = chainLabels
 
 	return {
 		outputs: outputs,

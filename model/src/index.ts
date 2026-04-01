@@ -237,8 +237,14 @@ export const model = BlockModel.create()
     return hasRequiredChains(cdr3Candidates);
   }, { retentive: true })
 
+  .output('runChainLabels', (ctx) => {
+    return ctx.outputs?.resolve({ field: 'chainLabels', assertFieldType: 'Input', allowPermanentAbsence: true })?.getDataAsJson();
+  })
+
   .output('perChainStats', (ctx) => {
-    return ctx.args.selectedChainRefs.map((_ref, i) => {
+    const n = Number(ctx.outputs?.resolve({ field: 'nChains', assertFieldType: 'Input', allowPermanentAbsence: true })?.getDataAsJson());
+    if (!n || !Number.isFinite(n)) return undefined;
+    return Array.from({ length: n }, (_, i) => {
       const tsv = ctx.outputs?.resolve(`statsTsvContent_${i}`)?.getDataAsString();
       if (!tsv) return undefined;
       const lines = tsv.trim().split('\n');
@@ -257,14 +263,18 @@ export const model = BlockModel.create()
 
   .output('perChainNumberingStats', (ctx) => {
     if (!ctx.args.numberingScheme) return undefined;
-    return ctx.args.selectedChainRefs.map((_ref, i) => {
+    const n = Number(ctx.outputs?.resolve({ field: 'nChains', assertFieldType: 'Input', allowPermanentAbsence: true })?.getDataAsJson());
+    if (!n || !Number.isFinite(n)) return undefined;
+    return Array.from({ length: n }, (_, i) => {
       const tsv = ctx.outputs?.resolve({ field: `numberingStatsContent_${i}`, assertFieldType: 'Input', allowPermanentAbsence: true })?.getDataAsString();
       return parseNumberingStats(tsv);
     });
   })
 
   .output('perChainAnarciLog', (ctx) => {
-    return ctx.args.selectedChainRefs.map((_ref, i) => {
+    const n = Number(ctx.outputs?.resolve({ field: 'nChains', assertFieldType: 'Input', allowPermanentAbsence: true })?.getDataAsJson());
+    if (!n || !Number.isFinite(n)) return undefined;
+    return Array.from({ length: n }, (_, i) => {
       return ctx.outputs?.resolve({ field: `anarciLog_${i}`, assertFieldType: 'Input', allowPermanentAbsence: true })?.getLogHandle();
     });
   })

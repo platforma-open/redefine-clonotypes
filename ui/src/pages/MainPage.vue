@@ -56,15 +56,8 @@ function setMixcrRun(newRef: PlRef | undefined) {
   app.model.args.clonotypeDefinition = [];
 }
 
-// Per-chain labels for display (from chainOptions)
-const chainLabels = computed(() => {
-  const options = app.model.outputs.chainOptions;
-  if (!options) return [];
-  return app.model.args.selectedChainRefs.map((ref) => {
-    const opt = options.find((o) => JSON.stringify(o.value) === JSON.stringify(ref));
-    return opt?.label ?? `Chain ${app.model.args.selectedChainRefs.indexOf(ref) + 1}`;
-  });
-});
+// Per-chain labels from the last completed run
+const chainLabels = computed(() => (app.model.outputs.runChainLabels as string[] | undefined) ?? []);
 
 const hasAnyAnarciLog = computed(() =>
   app.model.outputs.perChainAnarciLog?.some((log) => log != null) ?? false,
