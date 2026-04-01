@@ -101,6 +101,11 @@ export const model = BlockModel.create()
     {
       label: { includeNativeLabel: false },
     })
+      .filter((opt) => {
+        // Exclude chains already redefined by this or another redefine-clonotypes block
+        const spec = ctx.resultPool.getPColumnSpecByRef(opt.ref);
+        return spec?.axesSpec[1]?.domain?.['pl7.app/redefined-by'] === undefined;
+      })
       .map((opt) => ({ value: opt.ref, label: opt.label }));
   })
 
