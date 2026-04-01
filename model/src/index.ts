@@ -279,6 +279,15 @@ export const model = BlockModel.create()
     });
   })
 
+  .output('perChainNumberingMethod', (ctx) => {
+    if (!ctx.args.numberingScheme) return undefined;
+    const n = Number(ctx.outputs?.resolve({ field: 'nChains', assertFieldType: 'Input', allowPermanentAbsence: true })?.getDataAsJson());
+    if (!n || !Number.isFinite(n)) return undefined;
+    return Array.from({ length: n }, (_, i) => {
+      return ctx.outputs?.resolve({ field: `numberingMethod_${i}`, assertFieldType: 'Input', allowPermanentAbsence: true })?.getDataAsJson();
+    });
+  })
+
   .output('isRunning', (ctx) => ctx.outputs?.getIsReadyOrError() === false)
 
   .title(() => 'Redefine Clonotypes')

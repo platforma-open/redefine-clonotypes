@@ -1166,6 +1166,9 @@ wf.body(func(args) {
 
 		// Collect per-chain outputs
 		outputs["statsTsvContent_" + chainIdx] = statsTsvContent
+		if numberingEnabled {
+			outputs["numberingMethod_" + chainIdx] = useCdr3Numbering ? "cdr3" : "anarci"
+		}
 		if numberingStatsTsv != undefined {
 			outputs["numberingStatsContent_" + chainIdx] = numberingStatsTsv
 		}

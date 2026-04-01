@@ -145,7 +145,12 @@ function numberingWarningForChain(ns: { total: number; numbered: number } | unde
           {{ numberingWarningForChain(app.model.outputs.perChainNumberingStats?.[chainIdx]) }}
         </PlAlert>
         <p>Input clonotypes: {{ stats?.nClonotypesBefore?.toLocaleString() ?? 'N/A' }}</p>
-        <p v-if="app.model.args.numberingScheme !== undefined">Successfully numbered: {{ app.model.outputs.perChainNumberingStats?.[chainIdx]?.numbered?.toLocaleString() ?? 'N/A' }}</p>
+        <p v-if="app.model.args.numberingScheme !== undefined && app.model.outputs.perChainNumberingMethod?.[chainIdx] === 'anarci'">
+          Successfully numbered with ANARCI: {{ app.model.outputs.perChainNumberingStats?.[chainIdx]?.numbered?.toLocaleString() ?? 'N/A' }}
+        </p>
+        <p v-else-if="app.model.args.numberingScheme !== undefined && app.model.outputs.perChainNumberingMethod?.[chainIdx] === 'cdr3'">
+          Successfully numbered based on CDR3
+        </p>
         <p>Output clonotypes after redefinition: {{ stats?.nClonotypesAfter?.toLocaleString() ?? 'N/A' }}</p>
       </div>
     </template>
