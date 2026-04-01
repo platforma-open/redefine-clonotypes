@@ -116,7 +116,7 @@ export const model = BlockModel.create()
       sequenceDomain['pl7.app/vdj/scClonotypeChain/index'] = 'primary';
     }
 
-    return ctx.resultPool.getCanonicalOptions({ main: anchor },
+    const options = ctx.resultPool.getCanonicalOptions({ main: anchor },
       [
         {
           axes: [{ anchor: 'main', idx: 1 }],
@@ -129,6 +129,22 @@ export const model = BlockModel.create()
         },
       ],
     );
+
+    if (!isSingleCell || !options) return options;
+
+    // For single-cell: keep only chain A options (chain B equivalents are auto-included
+    // by the workflow) and strip the chain name prefix from labels so they are stable
+    // across receptor types (e.g., "Heavy CDR3 aa Primary" → "CDR3 aa Primary")
+    const chainNamePattern = /^(?:Heavy|Light|Alpha|Beta|Gamma|Delta)\s+/;
+    return options
+      .filter((opt) => {
+        const id = JSON.parse(opt.value as string) as { domain?: Record<string, string> };
+        return id.domain?.['pl7.app/vdj/scClonotypeChain'] === 'A';
+      })
+      .map((opt) => ({
+        ...opt,
+        label: opt.label.replace(chainNamePattern, ''),
+      }));
   })
 
   .output('numberingAvailable', (ctx) => {
@@ -221,38 +237,36 @@ export const model = BlockModel.create()
     return hasRequiredChains(cdr3Candidates);
   }, { retentive: true })
 
-  .output('stats', (ctx) => {
-    const tsv = ctx.outputs?.resolve('statsTsvContent')?.getDataAsString();
-    if (!tsv) {
-      return undefined;
-    }
-    const lines = tsv.trim().split('\n');
-    if (lines.length !== 2) {
-      return undefined;
-    }
-    const headers = lines[0].split('\t');
-    const values = lines[1].split('\t');
-    const beforeIndex = headers.indexOf('nClonotypesBefore');
-    const afterIndex = headers.indexOf('nClonotypesAfter');
-
-    if (beforeIndex === -1 || afterIndex === -1) {
-      return undefined;
-    }
-
-    return {
-      nClonotypesBefore: parseInt(values[beforeIndex], 10),
-      nClonotypesAfter: parseInt(values[afterIndex], 10),
-    };
+  .output('perChainStats', (ctx) => {
+    return ctx.args.selectedChainRefs.map((_ref, i) => {
+      const tsv = ctx.outputs?.resolve(`statsTsvContent_${i}`)?.getDataAsString();
+      if (!tsv) return undefined;
+      const lines = tsv.trim().split('\n');
+      if (lines.length !== 2) return undefined;
+      const headers = lines[0].split('\t');
+      const values = lines[1].split('\t');
+      const beforeIndex = headers.indexOf('nClonotypesBefore');
+      const afterIndex = headers.indexOf('nClonotypesAfter');
+      if (beforeIndex === -1 || afterIndex === -1) return undefined;
+      return {
+        nClonotypesBefore: parseInt(values[beforeIndex], 10),
+        nClonotypesAfter: parseInt(values[afterIndex], 10),
+      };
+    });
   })
 
-  .output('numberingStats', (ctx) => {
+  .output('perChainNumberingStats', (ctx) => {
     if (!ctx.args.numberingScheme) return undefined;
-    const tsv = ctx.outputs?.resolve({ field: 'numberingStatsContent', assertFieldType: 'Input', allowPermanentAbsence: true })?.getDataAsString();
-    return parseNumberingStats(tsv);
+    return ctx.args.selectedChainRefs.map((_ref, i) => {
+      const tsv = ctx.outputs?.resolve({ field: `numberingStatsContent_${i}`, assertFieldType: 'Input', allowPermanentAbsence: true })?.getDataAsString();
+      return parseNumberingStats(tsv);
+    });
   })
 
-  .output('anarciLog', (ctx) => {
-    return ctx.outputs?.resolve({ field: 'anarciLog', assertFieldType: 'Input', allowPermanentAbsence: true })?.getLogHandle();
+  .output('perChainAnarciLog', (ctx) => {
+    return ctx.args.selectedChainRefs.map((_ref, i) => {
+      return ctx.outputs?.resolve({ field: `anarciLog_${i}`, assertFieldType: 'Input', allowPermanentAbsence: true })?.getLogHandle();
+    });
   })
 
   .output('isRunning', (ctx) => ctx.outputs?.getIsReadyOrError() === false)
