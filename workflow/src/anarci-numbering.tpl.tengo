@@ -17,10 +17,26 @@ self.body(func(inputs) {
     cdrMappingH := inputs.cdrMappingH
     cdrMappingKL := inputs.cdrMappingKL
 
+    // Resource configuration with defaults
+    fastaMem := "4GiB"
+    anarciMem := "16GiB"
+    anarciCpu := 4
+    numberingMem := "8GiB"
+    numberingCpu := 2
+    if !is_undefined(inputs.mem) {
+        fastaMem = inputs.mem
+        anarciMem = inputs.mem
+        numberingMem = inputs.mem
+    }
+    if !is_undefined(inputs.cpu) {
+        anarciCpu = inputs.cpu
+        numberingCpu = inputs.cpu
+    }
+
     fastaCmd := exec.builder().
         software(fastaSw).
         cpu(1).
-        mem("4GiB").
+        mem(fastaMem).
         addFile("input.tsv", inputAaTsv).
         arg("--input_tsv").arg("input.tsv").
         arg("--key_column").arg("clonotypeKey").
@@ -34,8 +50,8 @@ self.body(func(inputs) {
     // even when ANARCI cannot number any sequences (e.g. heavily engineered scaffolds)
     anarciBuilder := exec.builder().
         software(anarciSw).
-        cpu(4).
-        mem("16GiB").
+        cpu(anarciCpu).
+        mem(anarciMem).
         arg("-i").arg("input.fasta").
         arg("--scheme").arg(scheme).
         arg("--ncpu").argWithVar("{system.cpu}").
@@ -60,8 +76,8 @@ self.body(func(inputs) {
 
     numberingExec := exec.builder().
         software(numberingSw).
-        cpu(2).
-        mem("8GiB").
+        cpu(numberingCpu).
+        mem(numberingMem).
         addFile("input.tsv", inputTsv).
         arg("--input_tsv").arg("input.tsv").
         arg("--scheme").arg(scheme).

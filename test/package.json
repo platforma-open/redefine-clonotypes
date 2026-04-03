@@ -12,7 +12,13 @@
   "files": [],
   "keywords": [],
   "dependencies": {
-    "this-block": "workspace:@platforma-open/milaboratories.redefine-clonotypes@*"
+    "this-block": "workspace:@platforma-open/milaboratories.redefine-clonotypes@*",
+    "@platforma-open/milaboratories.redefine-clonotypes.model": "workspace:*",
+    "@platforma-open/milaboratories.samples-and-data.model": "^2.4.1",
+    "@platforma-open/milaboratories.samples-and-data": "^1.12.3",
+    "@platforma-open/milaboratories.mixcr-clonotyping-2.model": "^1.20.0",
+    "@platforma-open/milaboratories.mixcr-clonotyping-2": "^2.12.27",
+    "@platforma-sdk/model": "catalog:"
   },
   "devDependencies": {
     "@milaboratories/ts-builder": "catalog:",
