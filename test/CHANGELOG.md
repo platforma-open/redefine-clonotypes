@@ -1,5 +1,13 @@
 # @platforma-open/milaboratories.redefine-clonotypes.test
 
+## 1.3.1
+
+### Patch Changes
+
+- 9a035ee: Early spec export for faster downstream pipeline setup, configurable memory/CPU in Advanced Settings, code organization improvements with extracted numbering template and shared helpers, integration tests
+- Updated dependencies [9a035ee]
+  - @platforma-open/milaboratories.redefine-clonotypes.model@1.7.0
+
 ## 1.3.0
 
 ### Minor Changes
