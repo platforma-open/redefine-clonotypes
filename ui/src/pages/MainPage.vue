@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { PlAccordionSection, PlAlert, PlBlockPage, PlBtnGhost, PlDropdown, PlDropdownMulti, PlDropdownRef, PlLogView, PlMaskIcon24, PlSlideModal } from '@platforma-sdk/ui-vue';
+import { PlAccordionSection, PlAlert, PlBlockPage, PlBtnGhost, PlDropdown, PlDropdownMulti, PlDropdownRef, PlLogView, PlMaskIcon24, PlNumberField, PlSectionSeparator, PlSlideModal } from '@platforma-sdk/ui-vue';
 import { computed, ref, watchEffect } from 'vue';
 import { useApp } from '../app';
 
@@ -60,8 +60,9 @@ const numberingWarning = computed(() => {
       :options="app.model.outputs.clonotypeDefinitionOptions"
       :disabled="!app.model.args.anchorRef"
     />
-    <PlAccordionSection v-if="numberingAvailable" label="Advanced Settings">
+    <PlAccordionSection label="Advanced Settings">
       <PlDropdown
+        v-if="numberingAvailable"
         v-model="app.model.args.numberingScheme"
         label="Numbering schema"
         placeholder="None"
@@ -73,6 +74,31 @@ const numberingWarning = computed(() => {
           Apply IMGT, Kabat, or Chothia numbering. Requires datasets with VDJRegion or VDJRegionInFrame sequences or assembled on CDR3 (In this case, only the CDR3 region will be numbered). Transformed features are used for clonotype definition.
         </template>
       </PlDropdown>
+
+      <PlSectionSeparator>Resource Allocation</PlSectionSeparator>
+      <PlNumberField
+        v-model="app.model.args.mem"
+        label="Memory (GiB)"
+        :minValue="1"
+        :step="1"
+        :maxValue="1012"
+      >
+        <template #tooltip>
+          Sets the amount of memory to use for the computation.
+        </template>
+      </PlNumberField>
+
+      <PlNumberField
+        v-model="app.model.args.cpu"
+        label="CPU (cores)"
+        :minValue="1"
+        :step="1"
+        :maxValue="128"
+      >
+        <template #tooltip>
+          Sets the number of CPU cores to use for the computation.
+        </template>
+      </PlNumberField>
     </PlAccordionSection>
 
     <PlAlert v-if="!isValid" type="info">
