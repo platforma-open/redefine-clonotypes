@@ -1,11 +1,11 @@
 {
   "name": "@platforma-open/milaboratories.redefine-clonotypes.workflow",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "type": "module",
   "description": "Block Workflow",
   "scripts": {
     "build": "rm -rf dist && pl-tengo check && pl-tengo build",
-    "test": "vitest",
+    "test": "vitest --passWithNoTests",
     "format": "/usr/bin/env emacs --script ./format.el",
     "do-pack": "rm -f *.tgz && pnpm pack && mv *.tgz package.tgz"
   },

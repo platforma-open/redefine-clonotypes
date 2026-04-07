@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { PlRef } from '@platforma-sdk/model';
-import { PlAccordionSection, PlAlert, PlBlockPage, PlBtnGhost, PlDropdown, PlDropdownMulti, PlDropdownRef, PlLogView, PlMaskIcon24, PlSlideModal, PlTabs } from '@platforma-sdk/ui-vue';
+import { PlAccordionSection, PlAlert, PlBlockPage, PlBtnGhost, PlDropdown, PlDropdownMulti, PlDropdownRef, PlLogView, PlMaskIcon24, PlNumberField, PlSectionSeparator, PlSlideModal, PlTabs } from '@platforma-sdk/ui-vue';
 import { computed, ref, watch, watchEffect } from 'vue';
 import { useApp } from '../app';
 
@@ -9,7 +9,7 @@ const anarciLogOpen = ref(false);
 
 // Block is valid when a run, at least one chain, and at least one definition column are selected
 const isValid = computed(() =>
-  app.model.args.mixcrRunRef !== undefined
+  app.model.args.inputRef !== undefined
   && app.model.args.selectedChainRefs.length > 0
   && (app.model.args.clonotypeDefinition?.length ?? 0) > 0,
 );
@@ -28,7 +28,7 @@ const numberingSchemeOptions = [
 
 // Reset numbering scheme when run is cleared or numbering becomes unavailable
 watchEffect(() => {
-  if (app.model.args.mixcrRunRef === undefined || app.model.outputs.numberingAvailable === false) {
+  if (app.model.args.inputRef === undefined || app.model.outputs.numberingAvailable === false) {
     app.model.args.numberingScheme = undefined;
   }
 });
@@ -54,7 +54,7 @@ watch(chainOptionsKey, () => {
 
 // Clear dependent args when the user switches to a different MiXCR run
 function setMixcrRun(newRef: PlRef | undefined) {
-  app.model.args.mixcrRunRef = newRef;
+  app.model.args.inputRef = newRef;
   app.model.args.selectedChainRefs = [];
   app.model.args.numberingScheme = undefined;
   app.model.args.clonotypeDefinition = [];
@@ -64,17 +64,17 @@ function setMixcrRun(newRef: PlRef | undefined) {
 // These are always in sync with the stats indices regardless of current UI selection.
 const chainLabels = computed(() => (app.model.outputs.runChainLabels as string[] | undefined) ?? []);
 
-// Detect stale results: snapshot the mixcrRunRef when stats arrive, then compare against
+// Detect stale results: snapshot the inputRef when stats arrive, then compare against
 // the current selection. Hides results when the user switches datasets before the new run completes.
 const resultsRunRef = ref<unknown>(undefined);
 watch(() => app.model.outputs.perChainStats, (stats) => {
   if (stats && stats.length > 0) {
-    resultsRunRef.value = JSON.stringify(app.model.args.mixcrRunRef);
+    resultsRunRef.value = JSON.stringify(app.model.args.inputRef);
   }
 }, { immediate: true });
 const resultsMatchCurrentArgs = computed(() => {
   if (!resultsRunRef.value) return false;
-  return resultsRunRef.value === JSON.stringify(app.model.args.mixcrRunRef);
+  return resultsRunRef.value === JSON.stringify(app.model.args.inputRef);
 });
 
 // True if at least one chain produced an ANARCI log
@@ -126,9 +126,9 @@ function numberingWarningForChain(ns: { total: number; numbered: number } | unde
   >
     <!-- Input selection: MiXCR run → chains → definition columns -->
     <PlDropdownRef
-      v-model="app.model.args.mixcrRunRef"
+      v-model="app.model.args.inputRef"
       label="MiXCR Run"
-      :options="app.model.outputs.mixcrRunOptions"
+      :options="app.model.outputs.inputOptions"
       @update:model-value="setMixcrRun"
     />
 
@@ -138,7 +138,7 @@ function numberingWarningForChain(ns: { total: number; numbered: number } | unde
       v-model="app.model.args.selectedChainRefs"
       label="Select Chains"
       :options="app.model.outputs.chainOptions"
-      :disabled="!app.model.args.mixcrRunRef"
+      :disabled="!app.model.args.inputRef"
     />
 
     <PlDropdownMulti
@@ -151,8 +151,9 @@ function numberingWarningForChain(ns: { total: number; numbered: number } | unde
         In single-cell data, both chains (A and B) will be redefined using the same selected features.
       </template>
     </PlDropdownMulti>
-    <PlAccordionSection v-if="numberingAvailable" label="Advanced Settings">
+    <PlAccordionSection label="Advanced Settings">
       <PlDropdown
+        v-if="numberingAvailable"
         v-model="app.model.args.numberingScheme"
         label="Numbering schema"
         placeholder="None"
@@ -164,6 +165,31 @@ function numberingWarningForChain(ns: { total: number; numbered: number } | unde
           Apply IMGT, Kabat, or Chothia numbering. Requires datasets with VDJRegion or VDJRegionInFrame sequences or assembled on CDR3 (In this case, only the CDR3 region will be numbered). Transformed features are used for clonotype definition.
         </template>
       </PlDropdown>
+
+      <PlSectionSeparator>Resource Allocation</PlSectionSeparator>
+      <PlNumberField
+        v-model="app.model.args.mem"
+        label="Memory (GiB)"
+        :minValue="1"
+        :step="1"
+        :maxValue="1012"
+      >
+        <template #tooltip>
+          Sets the amount of memory to use for the computation.
+        </template>
+      </PlNumberField>
+
+      <PlNumberField
+        v-model="app.model.args.cpu"
+        label="CPU (cores)"
+        :minValue="1"
+        :step="1"
+        :maxValue="128"
+      >
+        <template #tooltip>
+          Sets the number of CPU cores to use for the computation.
+        </template>
+      </PlNumberField>
     </PlAccordionSection>
 
     <!-- Validation message when inputs are incomplete -->
@@ -217,9 +243,8 @@ function numberingWarningForChain(ns: { total: number; numbered: number } | unde
       />
       <!-- Unnumbered sequence samples for the active tab's chain -->
       <pre v-if="activeAnarciNumberingStats?.unnumberedSamples?.length" style="padding: 16px; font-size: 12px; border-bottom: 1px solid var(--pl-color-border, #ddd);">Sample of un-numbered sequences ({{ activeAnarciNumberingStats.unnumberedSamples.length }}):
-
-<template v-for="(sample, idx) in activeAnarciNumberingStats.unnumberedSamples" :key="idx">{{ sample }}
-</template></pre>
+      <template v-for="(sample, idx) in activeAnarciNumberingStats.unnumberedSamples" :key="idx">{{ sample }}
+      </template></pre>
       <!-- Log stream for the active tab's chain -->
       <PlLogView v-if="activeAnarciLog" :log-handle="activeAnarciLog"/>
     </PlSlideModal>

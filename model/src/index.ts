@@ -41,10 +41,12 @@ function parseNumberingStats(tsv: string | undefined): {
 export type BlockArgs = {
   defaultBlockLabel: string;
   customBlockLabel: string;
-  mixcrRunRef?: PlRef;
+  inputRef?: PlRef;
   selectedChainRefs: PlRef[];
   clonotypeDefinition: SUniversalPColumnId[];
   numberingScheme?: 'imgt' | 'kabat' | 'chothia';
+  mem?: number;
+  cpu?: number;
 };
 
 export const model = BlockModel.create()
@@ -56,9 +58,9 @@ export const model = BlockModel.create()
     clonotypeDefinition: [],
   })
 
-  .argsValid((ctx) => ctx.args.mixcrRunRef !== undefined && ctx.args.selectedChainRefs.length > 0 && (ctx.args.clonotypeDefinition?.length ?? 0) > 0)
+  .argsValid((ctx) => ctx.args.inputRef !== undefined && ctx.args.selectedChainRefs.length > 0 && (ctx.args.clonotypeDefinition?.length ?? 0) > 0)
 
-  .output('mixcrRunOptions', (ctx) => {
+  .output('inputOptions', (ctx) => {
     // Discover clonotyping runs by finding anchor columns with clonotypingRunId.
     const options = ctx.resultPool.getOptions([
       {
@@ -131,7 +133,7 @@ export const model = BlockModel.create()
   })
 
   .output('chainOptions', (ctx) => {
-    const run = ctx.args.mixcrRunRef;
+    const run = ctx.args.inputRef;
     if (run === undefined) return undefined;
 
     // Extract clonotypingRunId from the selected anchor column's clonotypeKey axis

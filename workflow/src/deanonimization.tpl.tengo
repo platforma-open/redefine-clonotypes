@@ -50,7 +50,15 @@ self.body(func(args) {
 	deanonimizedTsv := args.clusteringResult
 	if !is_undefined(deanonimizedTsv) {
 		// Process TSV file using pt
-		wf := pt.workflow().mem("8GiB").cpu(2)
+		ptMem := "8GiB"
+		ptCpu := 2
+		if !is_undefined(args.mem) {
+			ptMem = args.mem
+		}
+		if !is_undefined(args.cpu) {
+			ptCpu = args.cpu
+		}
+		wf := pt.workflow().mem(ptMem).cpu(ptCpu)
 		
 		df := wf.frame(deanonimizedTsv, {
 			xsvType: "tsv",

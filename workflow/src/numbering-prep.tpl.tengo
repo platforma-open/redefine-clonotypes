@@ -1,0 +1,117 @@
+self := import("@platforma-sdk/workflow-tengo:tpl")
+ll := import("@platforma-sdk/workflow-tengo:ll")
+pframes := import("@platforma-sdk/workflow-tengo:pframes")
+render := import("@platforma-sdk/workflow-tengo:render")
+assets := import("@platforma-sdk/workflow-tengo:assets")
+
+numberingTpl := assets.importTemplate(":anarci-numbering")
+
+// Only resource handles are returned — metadata is computed in the main template.
+// Unused outputs get {} placeholder since defineOutputs requires all to be set.
+self.defineOutputs(
+	"numberingTsv", "numberingStatsTsv", "anarciLog",
+	"cdr3Tsv"
+)
+
+self.body(func(inputs) {
+	aaByChain := inputs.aaByChain
+	ntByChain := inputs.ntByChain
+	cdr3AaByChain := inputs.cdr3AaByChain
+	cdr3NtByChain := inputs.cdr3NtByChain
+	hasH := inputs.hasH
+	hasKL := inputs.hasKL
+	useVdjRegionNumbering := hasH || hasKL
+	useCdr3Numbering := inputs.useCdr3Numbering
+	isSingleCell := inputs.isSingleCell
+	numberingScheme := inputs.numberingScheme
+	clonotypeKeyAxisSpec := inputs.clonotypeKeyAxisSpec
+	cdrMappingH := inputs.cdrMappingH
+	cdrMappingKL := inputs.cdrMappingKL
+	mem := inputs.mem
+	cpu := inputs.cpu
+
+	numberingTsv := undefined
+	numberingStatsTsv := undefined
+	anarciLog := undefined
+	cdr3Tsv := undefined
+
+	// VDJRegion numbering via ANARCI
+	if useVdjRegionNumbering {
+		numberingAaTsvBuilder := pframes.tsvFileBuilder()
+		numberingAaTsvBuilder.setAxisHeader(clonotypeKeyAxisSpec, "clonotypeKey")
+		numberingInputTsvBuilder := pframes.tsvFileBuilder()
+		numberingInputTsvBuilder.setAxisHeader(clonotypeKeyAxisSpec, "clonotypeKey")
+
+		for _, chainKey in ["H", "KL"] {
+			col := aaByChain[chainKey]
+			if col != undefined {
+				headerAa := "vdjRegion_aa_" + chainKey
+				numberingAaTsvBuilder.add(col, { header: headerAa })
+				numberingInputTsvBuilder.add(col, { header: headerAa })
+			}
+		}
+		for _, chainKey in ["H", "KL"] {
+			col := ntByChain[chainKey]
+			if col != undefined {
+				headerNt := "vdjRegion_nt_" + chainKey
+				numberingInputTsvBuilder.add(col, { header: headerNt })
+			}
+		}
+
+		numberingAaTsvBuilder.mem(mem)
+		numberingAaTsvBuilder.cpu(cpu)
+		numberingInputTsvBuilder.mem(mem)
+		numberingInputTsvBuilder.cpu(cpu)
+
+		numberingAaTsv := numberingAaTsvBuilder.build()
+		numberingInputTsv := numberingInputTsvBuilder.build()
+
+		bulkChain := undefined
+		if !isSingleCell {
+			bulkChain = hasH ? "H" : "KL"
+		}
+
+		numbering := render.create(numberingTpl, {
+			inputAaTsv: numberingAaTsv,
+			inputTsv: numberingInputTsv,
+			scheme: numberingScheme,
+			isSingleCell: isSingleCell,
+			bulkChain: bulkChain,
+			cdrMappingH: cdrMappingH,
+			cdrMappingKL: cdrMappingKL,
+			mem: mem,
+			cpu: cpu
+		})
+		numberingTsv = numbering.output("numbered", 24 * 60 * 60 * 1000)
+		numberingStatsTsv = numbering.output("numberingStats", 24 * 60 * 60 * 1000)
+		anarciLog = numbering.output("anarciLog")
+	}
+
+	// CDR3 TSV building (when VDJRegion is not available)
+	if useCdr3Numbering {
+		cdr3TsvBuilder := pframes.tsvFileBuilder()
+		cdr3TsvBuilder.setAxisHeader(clonotypeKeyAxisSpec, "clonotypeKey")
+		for _, chainKey in ["H", "KL"] {
+			col := cdr3AaByChain[chainKey]
+			if col != undefined {
+				cdr3TsvBuilder.add(col, { header: "cdr3_aa_" + chainKey })
+			}
+		}
+		for _, chainKey in ["H", "KL"] {
+			col := cdr3NtByChain[chainKey]
+			if col != undefined {
+				cdr3TsvBuilder.add(col, { header: "cdr3_nt_" + chainKey })
+			}
+		}
+		cdr3TsvBuilder.mem(mem)
+		cdr3TsvBuilder.cpu(cpu)
+		cdr3Tsv = cdr3TsvBuilder.build()
+	}
+
+	return {
+		numberingTsv: numberingTsv != undefined ? numberingTsv : {},
+		numberingStatsTsv: numberingStatsTsv != undefined ? numberingStatsTsv : {},
+		anarciLog: anarciLog != undefined ? anarciLog : {},
+		cdr3Tsv: cdr3Tsv != undefined ? cdr3Tsv : {}
+	}
+})

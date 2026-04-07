@@ -1,5 +1,17 @@
 # @platforma-open/milaboratories.redefine-clonotypes.workflow
 
+## 1.8.0
+
+### Minor Changes
+
+- 9a035ee: Early spec export for faster downstream pipeline setup, configurable memory/CPU in Advanced Settings, code organization improvements with extracted numbering template and shared helpers, integration tests
+
+## 1.7.1
+
+### Patch Changes
+
+- bef4263: Update anarci software package version to fix container start command
+
 ## 1.7.0
 
 ### Minor Changes
