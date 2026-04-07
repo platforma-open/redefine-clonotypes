@@ -33,7 +33,7 @@ function parseNumberingStats(tsv: string | undefined): {
   // Sample AA sequences from clonotypes ANARCI could not number (format: "key|chain|sequence")
   const samplesIdx = headers.indexOf('unnumberedSamples');
   const samplesRaw = samplesIdx !== -1 ? (values[samplesIdx] ?? '') : '';
-  const unnumberedSamples = samplesRaw ? samplesRaw.split(';').filter(Boolean) : [];
+  const unnumberedSamples = samplesRaw ? samplesRaw.split(';').filter((s) => s !== '' && s !== '""') : [];
 
   return { total, numbered: Math.max(numberedH, numberedKL), unnumberedSamples };
 }
