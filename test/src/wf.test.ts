@@ -1,7 +1,4 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-explicit-any */
-import type {
-  BlockArgs,
-} from '@platforma-open/milaboratories.redefine-clonotypes.model';
 import { blockSpec as clonotypingBlockSpec } from '@platforma-open/milaboratories.mixcr-clonotyping-2';
 import type {
   BlockArgs as MiXCRClonotypingBlockArgs,
@@ -9,6 +6,9 @@ import type {
 import {
   uniquePlId,
 } from '@platforma-open/milaboratories.mixcr-clonotyping-2.model';
+import type {
+  BlockArgs,
+} from '@platforma-open/milaboratories.redefine-clonotypes.model';
 import { blockSpec as samplesAndDataBlockSpec } from '@platforma-open/milaboratories.samples-and-data';
 import type { BlockArgs as SamplesAndDataBlockArgs } from '@platforma-open/milaboratories.samples-and-data.model';
 import { wrapOutputs } from '@platforma-sdk/model';
@@ -110,62 +110,80 @@ blockTest(
 
     const redefineBlockId = await project.addBlock('Redefine Clonotypes', redefineBlockSpec);
 
-    // Wait for dataset options
+    // Step 1: Wait for run options
     const redefineState1 = await awaitStableState(
       project.getBlockState(redefineBlockId),
       60000,
     );
     const redefineOutputs1 = redefineState1.outputs as Record<string, any>;
-    expect(redefineOutputs1.datasetOptions?.ok).toBe(true);
-    const datasetOpts = redefineOutputs1.datasetOptions?.value ?? [];
-    expect(datasetOpts.length, 'Should have dataset options').toBeGreaterThan(0);
+    expect(redefineOutputs1.inputOptions?.ok).toBe(true);
+    const runOpts = redefineOutputs1.inputOptions?.value ?? [];
+    expect(runOpts.length, 'Should have run options').toBeGreaterThan(0);
+    const inputRef = runOpts[0].ref;
 
-    // Select dataset
+    // Step 2: Select run, wait for chain options
     await project.setBlockArgs(redefineBlockId, {
       defaultBlockLabel: '',
       customBlockLabel: '',
-      anchorRef: datasetOpts[0].ref,
+      inputRef,
+      selectedChainRefs: [],
       clonotypeDefinition: [],
     } satisfies BlockArgs);
 
-    // Wait for definition options
     const redefineState2 = await awaitStableState(
       project.getBlockState(redefineBlockId),
       60000,
     );
     const redefineOutputs2 = redefineState2.outputs as Record<string, any>;
-    expect(redefineOutputs2.clonotypeDefinitionOptions?.ok).toBe(true);
-    const defOpts = redefineOutputs2.clonotypeDefinitionOptions?.value ?? [];
+    expect(redefineOutputs2.chainOptions?.ok).toBe(true);
+    const chainOpts = redefineOutputs2.chainOptions?.value ?? [];
+    expect(chainOpts.length, 'Should have chain options').toBeGreaterThan(0);
+    const selectedChainRefs = chainOpts.map((o: any) => o.value);
+
+    // Step 3: Select chains, wait for definition options
+    await project.setBlockArgs(redefineBlockId, {
+      defaultBlockLabel: '',
+      customBlockLabel: '',
+      inputRef,
+      selectedChainRefs,
+      clonotypeDefinition: [],
+    } satisfies BlockArgs);
+
+    const redefineState3 = await awaitStableState(
+      project.getBlockState(redefineBlockId),
+      60000,
+    );
+    const redefineOutputs3 = redefineState3.outputs as Record<string, any>;
+    expect(redefineOutputs3.clonotypeDefinitionOptions?.ok).toBe(true);
+    const defOpts = redefineOutputs3.clonotypeDefinitionOptions?.value ?? [];
     expect(defOpts.length, 'Should have clonotype definition options').toBeGreaterThan(0);
 
-    // Select CDR3 aa as new clonotype definition
+    // Step 4: Select definition and run
     const cdr3AaOpt = defOpts.find((o: any) => o.label?.includes('CDR3 aa'));
     const selectedDef = cdr3AaOpt ?? defOpts[0];
 
     await project.setBlockArgs(redefineBlockId, {
       defaultBlockLabel: '',
       customBlockLabel: '',
-      anchorRef: datasetOpts[0].ref,
+      inputRef,
+      selectedChainRefs,
       clonotypeDefinition: [selectedDef.value],
     } satisfies BlockArgs);
 
-    // Run the block
     await project.runBlock(redefineBlockId);
-    const redefineState3 = await helpers.awaitBlockDoneAndGetStableBlockState(
+    const redefineState4 = await helpers.awaitBlockDoneAndGetStableBlockState(
       redefineBlockId,
       300000,
     );
 
-    // Verify stats output
-    const finalOutputs = redefineState3.outputs as Record<string, any>;
-    expect(finalOutputs.stats?.ok).toBe(true);
-    const stats = finalOutputs.stats?.value;
-    expect(stats).toBeDefined();
-    expect(stats.nClonotypesBefore, 'Should have input clonotypes').toBeGreaterThan(0);
-    expect(stats.nClonotypesAfter, 'Should have output clonotypes').toBeGreaterThan(0);
-
-    // PFrame exports go to the result pool, not block outputs.
-    // Stats verification above confirms the workflow completed correctly.
+    // Verify per-chain stats output
+    const finalOutputs = redefineState4.outputs as Record<string, any>;
+    expect(finalOutputs.perChainStats?.ok).toBe(true);
+    const perChainStats = finalOutputs.perChainStats?.value;
+    expect(perChainStats).toBeDefined();
+    expect(perChainStats.length).toBeGreaterThan(0);
+    expect(perChainStats[0].nClonotypesBefore, 'Should have input clonotypes').toBeGreaterThan(0);
+    expect(perChainStats[0].nClonotypesAfter, 'Should have output clonotypes').toBeGreaterThan(0);
   },
 );
 
@@ -177,49 +195,75 @@ blockTest(
 
     const redefineBlockId = await project.addBlock('Redefine Clonotypes', redefineBlockSpec);
 
+    // Step 1: Wait for run options
     const redefineState1 = await awaitStableState(
       project.getBlockState(redefineBlockId),
       60000,
     );
     const redefineOutputs1 = redefineState1.outputs as Record<string, any>;
-    const datasetOpts = redefineOutputs1.datasetOptions?.value ?? [];
-    expect(datasetOpts.length).toBeGreaterThan(0);
+    const runOpts = redefineOutputs1.inputOptions?.value ?? [];
+    expect(runOpts.length).toBeGreaterThan(0);
+    const inputRef = runOpts[0].ref;
 
+    // Step 2: Select run, wait for chain options
     await project.setBlockArgs(redefineBlockId, {
       defaultBlockLabel: '',
       customBlockLabel: '',
-      anchorRef: datasetOpts[0].ref,
+      inputRef,
+      selectedChainRefs: [],
       clonotypeDefinition: [],
+      mem: 32,
+      cpu: 2,
     } satisfies BlockArgs);
 
     const redefineState2 = await awaitStableState(
       project.getBlockState(redefineBlockId),
       60000,
     );
-    const defOpts = (redefineState2.outputs as Record<string, any>).clonotypeDefinitionOptions?.value ?? [];
+    const chainOpts = (redefineState2.outputs as Record<string, any>).chainOptions?.value ?? [];
+    expect(chainOpts.length).toBeGreaterThan(0);
+    const selectedChainRefs = chainOpts.map((o: any) => o.value);
 
-    // Configure with custom memory and CPU
+    // Step 3: Select chains, wait for definition options
+    await project.setBlockArgs(redefineBlockId, {
+      defaultBlockLabel: '',
+      customBlockLabel: '',
+      inputRef,
+      selectedChainRefs,
+      clonotypeDefinition: [],
+      mem: 32,
+      cpu: 2,
+    } satisfies BlockArgs);
+
+    const redefineState3 = await awaitStableState(
+      project.getBlockState(redefineBlockId),
+      60000,
+    );
+    const defOpts = (redefineState3.outputs as Record<string, any>).clonotypeDefinitionOptions?.value ?? [];
+
+    // Step 4: Select definition and run
     const cdr3AaOpt = defOpts.find((o: any) => o.label?.includes('CDR3 aa'));
     const selectedDef = cdr3AaOpt ?? defOpts[0];
 
     await project.setBlockArgs(redefineBlockId, {
       defaultBlockLabel: '',
       customBlockLabel: '',
-      anchorRef: datasetOpts[0].ref,
+      inputRef,
+      selectedChainRefs,
       clonotypeDefinition: [selectedDef.value],
       mem: 32,
       cpu: 2,
     } satisfies BlockArgs);
 
     await project.runBlock(redefineBlockId);
-    const redefineState3 = await helpers.awaitBlockDoneAndGetStableBlockState(
+    const redefineState4 = await helpers.awaitBlockDoneAndGetStableBlockState(
       redefineBlockId,
       300000,
     );
 
-    const finalOutputs = redefineState3.outputs as Record<string, any>;
-    expect(finalOutputs.stats?.ok).toBe(true);
-    const stats = finalOutputs.stats?.value;
+    const finalOutputs = redefineState4.outputs as Record<string, any>;
+    expect(finalOutputs.perChainStats?.ok).toBe(true);
+    const stats = finalOutputs.perChainStats?.value?.[0];
     expect(stats.nClonotypesBefore).toBeGreaterThan(0);
     expect(stats.nClonotypesAfter).toBeGreaterThan(0);
   },
