@@ -216,19 +216,21 @@ function numberingWarningForChain(ns: { total: number; numbered: number } | unde
         <PlAlert v-if="stats && stats.nClonotypesBefore === 0" type="warn">
           The input dataset is empty. Please choose a different dataset.
         </PlAlert>
-        <PlAlert v-if="numberingWarningForChain(app.model.outputs.perChainNumberingStats?.[chainIdx])" type="warn">
-          {{ numberingWarningForChain(app.model.outputs.perChainNumberingStats?.[chainIdx]) }}
-        </PlAlert>
-        <p>Input clonotypes: {{ stats?.nClonotypesBefore?.toLocaleString() ?? 'N/A' }}</p>
-        <!-- ANARCI numbering: show count of successfully numbered clonotypes -->
-        <p v-if="app.model.args.numberingScheme !== undefined && app.model.outputs.perChainNumberingMethod?.[chainIdx] === 'anarci'">
-          Successfully numbered with ANARCI: {{ app.model.outputs.perChainNumberingStats?.[chainIdx]?.numbered?.toLocaleString() ?? 'N/A' }}
-        </p>
-        <!-- CDR3 numbering: all clonotypes are "numbered" (trimming only, no alignment) -->
-        <p v-else-if="app.model.args.numberingScheme !== undefined && app.model.outputs.perChainNumberingMethod?.[chainIdx] === 'cdr3'">
-          Successfully numbered based on CDR3
-        </p>
-        <p>Output clonotypes after redefinition: {{ stats?.nClonotypesAfter?.toLocaleString() ?? 'N/A' }}</p>
+        <template v-else>
+          <PlAlert v-if="numberingWarningForChain(app.model.outputs.perChainNumberingStats?.[chainIdx])" type="warn">
+            {{ numberingWarningForChain(app.model.outputs.perChainNumberingStats?.[chainIdx]) }}
+          </PlAlert>
+          <p>Input clonotypes: {{ stats?.nClonotypesBefore?.toLocaleString() ?? 'N/A' }}</p>
+          <!-- ANARCI numbering: show count of successfully numbered clonotypes -->
+          <p v-if="app.model.args.numberingScheme !== undefined && app.model.outputs.perChainNumberingMethod?.[chainIdx] === 'anarci'">
+            Successfully numbered with ANARCI: {{ app.model.outputs.perChainNumberingStats?.[chainIdx]?.numbered?.toLocaleString() ?? 'N/A' }}
+          </p>
+          <!-- CDR3 numbering: all clonotypes are "numbered" (trimming only, no alignment) -->
+          <p v-else-if="app.model.args.numberingScheme !== undefined && app.model.outputs.perChainNumberingMethod?.[chainIdx] === 'cdr3'">
+            Successfully numbered based on CDR3
+          </p>
+          <p>Output clonotypes after redefinition: {{ stats?.nClonotypesAfter?.toLocaleString() ?? 'N/A' }}</p>
+        </template>
       </div>
     </template>
 
