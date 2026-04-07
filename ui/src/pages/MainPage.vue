@@ -77,18 +77,23 @@ const resultsMatchCurrentArgs = computed(() => {
   return resultsRunRef.value === JSON.stringify(app.model.args.inputRef);
 });
 
-// True if at least one chain produced an ANARCI log
+// True if at least one non-empty chain produced an ANARCI log
 const hasAnyAnarciLog = computed(() =>
-  app.model.outputs.perChainAnarciLog?.some((log) => log != null) ?? false,
+  app.model.outputs.perChainAnarciLog?.some((log, i) =>
+    log != null && (app.model.outputs.perChainStats?.[i]?.nClonotypesBefore ?? 0) > 0,
+  ) ?? false,
 );
 
 // --- ANARCI log modal: one tab per chain that has a log ---
 
-// Build tab options from chain labels, filtering to chains that actually have logs
+// Build tab options from chain labels, filtering to chains that have logs and non-empty input
 const anarciLogTabOptions = computed(() =>
   chainLabels.value
     .map((label, i) => ({ label, value: String(i) }))
-    .filter((_, i) => app.model.outputs.perChainAnarciLog?.[i] != null),
+    .filter((_, i) =>
+      app.model.outputs.perChainAnarciLog?.[i] != null
+      && (app.model.outputs.perChainStats?.[i]?.nClonotypesBefore ?? 0) > 0,
+    ),
 );
 
 // Track active tab; reset to first available if current tab disappears (e.g., chain deselected)
@@ -239,12 +244,12 @@ function numberingWarningForChain(ns: { total: number; numbered: number } | unde
       <template #title>ANARCI Log</template>
       <!-- Tabs only shown when more than one chain has a log -->
       <PlTabs
-        v-if="anarciLogTabOptions.length > 1"
+        v-if="anarciLogTabOptions.length > 0"
         v-model="activeAnarciTab"
         :options="anarciLogTabOptions"
       />
       <!-- Unnumbered sequence samples for the active tab's chain -->
-      <pre v-if="activeAnarciNumberingStats?.unnumberedSamples?.length" style="padding: 16px; font-size: 12px; border-bottom: 1px solid var(--pl-color-border, #ddd);">Sample of un-numbered sequences ({{ activeAnarciNumberingStats.unnumberedSamples.length }}):
+      <pre v-if="activeAnarciNumberingStats?.unnumberedSamples?.length" style="margin: 0; padding: 16px; font-size: 12px; white-space: pre-wrap; word-break: break-all; border-bottom: 1px solid var(--pl-color-border, #ddd);">Sample of un-numbered sequences ({{ activeAnarciNumberingStats.unnumberedSamples.length }}):
       <template v-for="(sample, idx) in activeAnarciNumberingStats.unnumberedSamples" :key="idx">{{ sample }}
       </template></pre>
       <!-- Log stream for the active tab's chain -->
