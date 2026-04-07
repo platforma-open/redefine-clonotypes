@@ -1,180 +1,41 @@
 self := import("@platforma-sdk/workflow-tengo:tpl")
 ll := import("@platforma-sdk/workflow-tengo:ll")
 pframes := import("@platforma-sdk/workflow-tengo:pframes")
-maps := import("@platforma-sdk/workflow-tengo:maps")
 render := import("@platforma-sdk/workflow-tengo:render")
 assets := import("@platforma-sdk/workflow-tengo:assets")
 
 numberingTpl := assets.importTemplate(":anarci-numbering")
 
+// Only resource handles are returned — metadata is computed in the main template.
+// Unused outputs get {} placeholder since defineOutputs requires all to be set.
 self.defineOutputs(
 	"numberingTsv", "numberingStatsTsv", "anarciLog",
-	"numberingHeaders", "numberingSpecs", "numberingLabels",
-	"numberingChains",
-	"cdr3Tsv", "cdr3Chains", "cdr3HasAa", "cdr3HasNt",
-	"useCdr3Numbering", "bulkNumberingChain",
-	"cdrAnnotationHeaderChain", "cdrAnnotationAvailableByChain"
+	"cdr3Tsv"
 )
 
-// Resolve chain key ("H", "KL", or undefined) from a column spec.
-resolveChainKey := func(colSpec, isSingleCell) {
-	if isSingleCell {
-		receptor := colSpec.axesSpec[0].domain["pl7.app/vdj/receptor"]
-		if receptor != "IG" { return undefined }
-		index := colSpec.domain["pl7.app/vdj/scClonotypeChain/index"]
-		if index != "primary" { return undefined }
-		scChain := colSpec.domain["pl7.app/vdj/scClonotypeChain"]
-		if scChain == "A" { return "H" }
-		if scChain == "B" { return "KL" }
-		return undefined
-	}
-	chain := colSpec.axesSpec[0].domain["pl7.app/vdj/chain"]
-	if chain == undefined { chain = colSpec.domain["pl7.app/vdj/chain"] }
-	if chain == "IGHeavy" { return "H" }
-	if chain == "IGLight" { return "KL" }
-	return undefined
-}
-
 self.body(func(inputs) {
-	columns := inputs.columns
+	aaByChain := inputs.aaByChain
+	ntByChain := inputs.ntByChain
+	cdr3AaByChain := inputs.cdr3AaByChain
+	cdr3NtByChain := inputs.cdr3NtByChain
+	hasH := inputs.hasH
+	hasKL := inputs.hasKL
+	useVdjRegionNumbering := hasH || hasKL
+	useCdr3Numbering := inputs.useCdr3Numbering
 	isSingleCell := inputs.isSingleCell
 	numberingScheme := inputs.numberingScheme
 	clonotypeKeyAxisSpec := inputs.clonotypeKeyAxisSpec
-	propertyCols := inputs.propertyCols
+	cdrMappingH := inputs.cdrMappingH
+	cdrMappingKL := inputs.cdrMappingKL
 	mem := inputs.mem
 	cpu := inputs.cpu
 
-	numberingRegions := ["FR1", "CDR1", "FR2", "CDR2", "FR3", "CDR3", "FR4"]
-	numberingHeaders := []
-	numberingSpecs := {}
-	numberingLabels := {}
 	numberingTsv := undefined
 	numberingStatsTsv := undefined
 	anarciLog := undefined
-	numberingChains := []
-	numberingChainSet := {}
 	cdr3Tsv := undefined
-	cdr3Chains := []
-	cdr3ChainSet := {}
-	cdr3HasAa := {}
-	cdr3HasNt := {}
-	useCdr3Numbering := false
-	bulkNumberingChain := undefined
 
-	// CDR annotation discovery
-	cdrAnnotationHeaderChain := {}
-	cdrAnnotationMappingByChain := {}
-	cdrAnnotationMappingDefault := undefined
-	cdrAnnotationAvailableByChain := {}
-
-	for i, col in propertyCols {
-		if col.spec.name != "pl7.app/vdj/sequence/annotation" { continue }
-		if col.spec.domain["pl7.app/sequence/annotation/type"] != "CDRs" { continue }
-		header := "property_" + i
-		chainKey := resolveChainKey(col.spec, isSingleCell)
-		if chainKey != undefined {
-			cdrAnnotationHeaderChain[header] = chainKey
-		}
-		mapping := col.spec.annotations["pl7.app/sequence/annotation/mapping"]
-		if mapping != undefined && mapping != "" {
-			if chainKey != undefined {
-				if is_undefined(cdrAnnotationMappingByChain[chainKey]) {
-					cdrAnnotationMappingByChain[chainKey] = mapping
-				}
-			} else if cdrAnnotationMappingDefault == undefined {
-				cdrAnnotationMappingDefault = mapping
-			}
-		}
-	}
-
-	// Retrieve VDJRegion sequences
-	vdjRegionCols := columns.getColumns("vdjRegionSeqs")
-	allowedFeatures := { "VDJRegion": true, "VDJRegionInFrame": true }
-	aaByChain := {}
-	ntByChain := {}
-	for _, col in vdjRegionCols {
-		feature := col.spec.domain["pl7.app/vdj/feature"]
-		if is_undefined(allowedFeatures[feature]) { continue }
-		alphabet := col.spec.domain["pl7.app/alphabet"]
-		chainKey := resolveChainKey(col.spec, isSingleCell)
-		if chainKey == undefined { continue }
-		if alphabet == "aminoacid" && is_undefined(aaByChain[chainKey]) {
-			aaByChain[chainKey] = col
-		} else if alphabet == "nucleotide" && is_undefined(ntByChain[chainKey]) {
-			ntByChain[chainKey] = col
-		}
-	}
-
-	// Detect scFv mode
-	scFvCols := columns.getColumns("scFvSeqs")
-	isScFv := len(scFvCols) > 0
-
-	hasH := !is_undefined(aaByChain["H"])
-	hasKL := !is_undefined(aaByChain["KL"])
-
-	// In scFv mode, scan properties for individual chain sequences
-	if isScFv && (!hasH || !hasKL) {
-		for _, col in propertyCols {
-			if col.spec.name != "pl7.app/vdj/sequence" { continue }
-			feature := col.spec.domain["pl7.app/vdj/feature"]
-			if is_undefined(allowedFeatures[feature]) { continue }
-			alphabet := col.spec.domain["pl7.app/alphabet"]
-			chainKey := resolveChainKey(col.spec, isSingleCell)
-			if chainKey == undefined { continue }
-			if alphabet == "aminoacid" && is_undefined(aaByChain[chainKey]) {
-				aaByChain[chainKey] = col
-			} else if alphabet == "nucleotide" && is_undefined(ntByChain[chainKey]) {
-				ntByChain[chainKey] = col
-			}
-		}
-		hasH = !is_undefined(aaByChain["H"])
-		hasKL = !is_undefined(aaByChain["KL"])
-	}
-
-	// CDR3-only fallback (main sequence)
-	cdr3Cols := columns.getColumns("cdr3MainSeqs")
-	cdr3AaByChain := {}
-	cdr3NtByChain := {}
-	for _, col in cdr3Cols {
-		if col.spec.domain["pl7.app/vdj/feature"] != "CDR3" { continue }
-		alphabet := col.spec.domain["pl7.app/alphabet"]
-		chainKey := resolveChainKey(col.spec, isSingleCell)
-		if chainKey == undefined { continue }
-		if alphabet == "aminoacid" && is_undefined(cdr3AaByChain[chainKey]) {
-			cdr3AaByChain[chainKey] = col
-		} else if alphabet == "nucleotide" && is_undefined(cdr3NtByChain[chainKey]) {
-			cdr3NtByChain[chainKey] = col
-		}
-	}
-
-	if isScFv {
-		for _, col in propertyCols {
-			if col.spec.name != "pl7.app/vdj/sequence" { continue }
-			if col.spec.domain["pl7.app/vdj/feature"] != "CDR3" { continue }
-			alphabet := col.spec.domain["pl7.app/alphabet"]
-			chainKey := resolveChainKey(col.spec, isSingleCell)
-			if chainKey == undefined { continue }
-			if alphabet == "aminoacid" && is_undefined(cdr3AaByChain[chainKey]) {
-				cdr3AaByChain[chainKey] = col
-			} else if alphabet == "nucleotide" && is_undefined(cdr3NtByChain[chainKey]) {
-				cdr3NtByChain[chainKey] = col
-			}
-		}
-	}
-
-	// Determine if VDJRegion or CDR3 sequences are available for numbering
-	hasCdr3H := !is_undefined(cdr3AaByChain["H"])
-	hasCdr3KL := !is_undefined(cdr3AaByChain["KL"])
-	useVdjRegionNumbering := hasH || hasKL
-	useCdr3Numbering = !useVdjRegionNumbering && (hasCdr3H || hasCdr3KL)
-
-	if isSingleCell {
-		ll.assert(useVdjRegionNumbering ? (hasH && hasKL) : (hasCdr3H && hasCdr3KL), "Sequences for both chains are required for numbering")
-	} else {
-		ll.assert(useVdjRegionNumbering || useCdr3Numbering, "VDJRegion or CDR3 amino acid sequence is required for numbering")
-	}
-
-	// Numbering based on VDJRegion sequences
+	// VDJRegion numbering via ANARCI
 	if useVdjRegionNumbering {
 		numberingAaTsvBuilder := pframes.tsvFileBuilder()
 		numberingAaTsvBuilder.setAxisHeader(clonotypeKeyAxisSpec, "clonotypeKey")
@@ -209,14 +70,6 @@ self.body(func(inputs) {
 		if !isSingleCell {
 			bulkChain = hasH ? "H" : "KL"
 		}
-		bulkNumberingChain = bulkChain
-
-		cdrMappingH := cdrAnnotationMappingByChain["H"]
-		cdrMappingKL := cdrAnnotationMappingByChain["KL"]
-		if cdrMappingH == undefined { cdrMappingH = cdrAnnotationMappingDefault }
-		if cdrMappingKL == undefined { cdrMappingKL = cdrAnnotationMappingDefault }
-		if cdrMappingH != undefined { cdrAnnotationAvailableByChain["H"] = true }
-		if cdrMappingKL != undefined { cdrAnnotationAvailableByChain["KL"] = true }
 
 		numbering := render.create(numberingTpl, {
 			inputAaTsv: numberingAaTsv,
@@ -234,32 +87,20 @@ self.body(func(inputs) {
 		anarciLog = numbering.output("anarciLog")
 	}
 
-	// Numbering based on CDR3 sequences (when VDJRegion is not available)
+	// CDR3 TSV building (when VDJRegion is not available)
 	if useCdr3Numbering {
 		cdr3TsvBuilder := pframes.tsvFileBuilder()
 		cdr3TsvBuilder.setAxisHeader(clonotypeKeyAxisSpec, "clonotypeKey")
 		for _, chainKey in ["H", "KL"] {
 			col := cdr3AaByChain[chainKey]
 			if col != undefined {
-				headerAa := "cdr3_aa_" + chainKey
-				cdr3TsvBuilder.add(col, { header: headerAa })
-				cdr3HasAa[chainKey] = true
-				if is_undefined(cdr3ChainSet[chainKey]) {
-					cdr3ChainSet[chainKey] = true
-					cdr3Chains = append(cdr3Chains, chainKey)
-				}
+				cdr3TsvBuilder.add(col, { header: "cdr3_aa_" + chainKey })
 			}
 		}
 		for _, chainKey in ["H", "KL"] {
 			col := cdr3NtByChain[chainKey]
 			if col != undefined {
-				headerNt := "cdr3_nt_" + chainKey
-				cdr3TsvBuilder.add(col, { header: headerNt })
-				cdr3HasNt[chainKey] = true
-				if is_undefined(cdr3ChainSet[chainKey]) {
-					cdr3ChainSet[chainKey] = true
-					cdr3Chains = append(cdr3Chains, chainKey)
-				}
+				cdr3TsvBuilder.add(col, { header: "cdr3_nt_" + chainKey })
 			}
 		}
 		cdr3TsvBuilder.mem(mem)
@@ -267,75 +108,10 @@ self.body(func(inputs) {
 		cdr3Tsv = cdr3TsvBuilder.build()
 	}
 
-	// Generate numbering headers and specs
-	schemeLabel := numberingScheme == "imgt" ? "IMGT" : numberingScheme == "kabat" ? "Kabat" : "Chothia"
-	for _, chainKey in ["H", "KL"] {
-		if is_undefined(aaByChain[chainKey]) { continue }
-		if is_undefined(numberingChainSet[chainKey]) {
-			numberingChainSet[chainKey] = true
-			numberingChains = append(numberingChains, chainKey)
-		}
-		chainDomain := chainKey == "H" ? "IGHeavy" : "IGLight"
-		chainLabel := chainKey == "H" ? "Heavy" : "Light"
-		for _, region in numberingRegions {
-			for _, alphabet in ["aminoacid", "nucleotide"] {
-				header := numberingScheme + "_" + region + "_" + (alphabet == "aminoacid" ? "aa" : "nt") + "_" + chainKey
-				numberingHeaders = append(numberingHeaders, header)
-				numberingLabels[header] = schemeLabel + " " + region + " " + (alphabet == "aminoacid" ? "aa" : "nt") + " " + chainLabel
-				numberingSpecs[header] = {
-					name: "pl7.app/vdj/sequence",
-					valueType: "String",
-					domain: {
-						"pl7.app/vdj/feature": region,
-						"pl7.app/vdj/chain": chainDomain,
-						"pl7.app/alphabet": alphabet
-					},
-					annotations: {
-						"pl7.app/label": numberingLabels[header],
-						"pl7.app/table/visibility": "optional",
-						"pl7.app/vdj/numberingSchema": numberingScheme
-					}
-				}
-			}
-		}
-		for _, feature in ["VDJRegion", "VDJRegionInFrame"] {
-			for _, alphabet in ["aminoacid", "nucleotide"] {
-				header := numberingScheme + "_" + feature + "_" + (alphabet == "aminoacid" ? "aa" : "nt") + "_" + chainKey
-				numberingHeaders = append(numberingHeaders, header)
-				numberingLabels[header] = schemeLabel + " " + feature + " " + (alphabet == "aminoacid" ? "aa" : "nt") + " " + chainLabel
-				numberingSpecs[header] = {
-					name: "pl7.app/vdj/sequence",
-					valueType: "String",
-					domain: {
-						"pl7.app/vdj/feature": feature,
-						"pl7.app/vdj/chain": chainDomain,
-						"pl7.app/alphabet": alphabet
-					},
-					annotations: {
-						"pl7.app/label": numberingLabels[header],
-						"pl7.app/table/visibility": "optional",
-						"pl7.app/vdj/numberingSchema": numberingScheme
-					}
-				}
-			}
-		}
-	}
-
 	return {
-		numberingTsv: numberingTsv,
-		numberingStatsTsv: numberingStatsTsv,
-		anarciLog: anarciLog,
-		numberingHeaders: numberingHeaders,
-		numberingSpecs: numberingSpecs,
-		numberingLabels: numberingLabels,
-		numberingChains: numberingChains,
-		cdr3Tsv: cdr3Tsv,
-		cdr3Chains: cdr3Chains,
-		cdr3HasAa: cdr3HasAa,
-		cdr3HasNt: cdr3HasNt,
-		useCdr3Numbering: useCdr3Numbering,
-		bulkNumberingChain: bulkNumberingChain,
-		cdrAnnotationHeaderChain: cdrAnnotationHeaderChain,
-		cdrAnnotationAvailableByChain: cdrAnnotationAvailableByChain
+		numberingTsv: numberingTsv != undefined ? numberingTsv : {},
+		numberingStatsTsv: numberingStatsTsv != undefined ? numberingStatsTsv : {},
+		anarciLog: anarciLog != undefined ? anarciLog : {},
+		cdr3Tsv: cdr3Tsv != undefined ? cdr3Tsv : {}
 	}
 })
