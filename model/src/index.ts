@@ -58,29 +58,86 @@ export const model = BlockModel.create()
 
   .argsValid((ctx) => ctx.args.mixcrRunRef !== undefined && ctx.args.selectedChainRefs.length > 0 && (ctx.args.clonotypeDefinition?.length ?? 0) > 0)
 
-  .output('mixcrRunOptions', (ctx) =>
-    ctx.resultPool.getOptions([
+  .output('mixcrRunOptions', (ctx) => {
+    // Discover clonotyping runs by finding anchor columns with clonotypingRunId.
+    const options = ctx.resultPool.getOptions([
       {
-        name: 'mixcr.com/clns', // MiXCR cloneset file
+        axes: [{ name: 'pl7.app/sampleId' }, { name: 'pl7.app/vdj/clonotypeKey' }],
+        annotations: { 'pl7.app/isAnchor': 'true' },
       },
       {
-        name: 'pl7.app/vdj/run', // Import VDJ run marker
+        axes: [{ name: 'pl7.app/sampleId' }, { name: 'pl7.app/vdj/scClonotypeKey' }],
+        annotations: { 'pl7.app/isAnchor': 'true' },
       },
     ], {
-      label: { includeNativeLabel: false, forceTraceElements: ['milaboratories.samples-and-data/dataset'] },
-    }),
-  )
+      label: {
+        includeNativeLabel: false,
+        forceTraceElements: [
+          'milaboratories.samples-and-data/dataset',
+        ],
+      },
+    }) ?? [];
+
+    // Strip chain/receptor suffix from labels — chain selection is handled by a separate dropdown.
+    // Bulk exports: "IG Heavy", "IG Light", etc. Single-cell exports: "IG", "TCRAB", "TCRGD".
+    const chainSuffix = / \/ (?:IG Heavy|IG Light|TCR Alpha|TCR Beta|TCR Gamma|TCR Delta|IG|TCRAB|TCRGD)$/;
+
+    // Block trace types whose label can disambiguate runs from the same dataset
+    const blockTraceTypes = new Set([
+      'milaboratories.mixcr-clonotyping',
+      'milaboratories.mixcr-amplicon-alignment',
+      'milaboratories.mixcr-scfv-clonotyping',
+      'milaboratories.importVDJ',
+    ]);
+
+    const seenRunIds = new Set<string>();
+    const deduplicated = options
+      .filter((opt) => {
+        const spec = ctx.resultPool.getPColumnSpecByRef(opt.ref);
+        const runId = spec?.axesSpec[1]?.domain?.['pl7.app/vdj/clonotypingRunId'];
+        if (!runId || seenRunIds.has(runId)) return false;
+        if (spec?.axesSpec[1]?.domain?.['pl7.app/redefined-by'] !== undefined) return false;
+        seenRunIds.add(runId);
+        return true;
+      })
+      .map((opt) => {
+        // Strip chain/receptor suffix from labels
+        const label = opt.label.replace(chainSuffix, '');
+        // Parse block label from trace for disambiguation when needed
+        const spec = ctx.resultPool.getPColumnSpecByRef(opt.ref);
+        const traceStr = spec?.annotations?.['pl7.app/trace'];
+        let blockLabel: string | undefined;
+        if (traceStr) {
+          try {
+            const trace = JSON.parse(traceStr) as { type: string; label: string }[];
+            blockLabel = trace.find((t) => blockTraceTypes.has(t.type))?.label;
+          } catch { /* ignore */ }
+        }
+        return { ...opt, label, blockLabel };
+      });
+
+    // If any labels collide after stripping, append the block label to disambiguate
+    const labelCounts = new Map<string, number>();
+    for (const opt of deduplicated) {
+      labelCounts.set(opt.label, (labelCounts.get(opt.label) ?? 0) + 1);
+    }
+
+    return deduplicated.map(({ blockLabel, ...opt }) => {
+      if ((labelCounts.get(opt.label) ?? 0) > 1 && blockLabel) {
+        return { ...opt, label: `${opt.label} / ${blockLabel}` };
+      }
+      return opt;
+    });
+  })
 
   .output('chainOptions', (ctx) => {
     const run = ctx.args.mixcrRunRef;
     if (run === undefined) return undefined;
 
-    // Get the run ID from the selected clns file
-    const runSpec = ctx.resultPool.getSpecByRef(run);
+    // Extract clonotypingRunId from the selected anchor column's clonotypeKey axis
+    const runSpec = ctx.resultPool.getPColumnSpecByRef(run);
     if (!runSpec) return undefined;
-
-    // Extract clonotypingRunId
-    const runId = runSpec.domain?.['pl7.app/vdj/clonotypingRunId'];
+    const runId = runSpec.axesSpec[1]?.domain?.['pl7.app/vdj/clonotypingRunId'];
     if (!runId) return undefined;
 
     // Find all chain/isotype tables associated with this run
