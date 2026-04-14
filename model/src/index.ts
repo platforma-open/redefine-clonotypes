@@ -47,6 +47,7 @@ export type BlockArgs = {
   numberingScheme?: 'imgt' | 'kabat' | 'chothia';
   mem?: number;
   cpu?: number;
+  exportCdr3AaPositions?: boolean;
 };
 
 export const model = BlockModel.create()

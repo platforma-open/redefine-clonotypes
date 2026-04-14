@@ -6,7 +6,7 @@ anarciSw := assets.importSoftware("@platforma-open/milaboratories.software-anarc
 fastaSw := assets.importSoftware("@platforma-open/milaboratories.redefine-clonotypes.assembling-fasta:main")
 numberingSw := assets.importSoftware("@platforma-open/milaboratories.redefine-clonotypes.anarci-numbering:main")
 
-self.defineOutputs("numbered", "numberingStats", "anarciLog")
+self.defineOutputs("numbered", "numberingStats", "anarciLog", "cdr3Positions")
 
 self.body(func(inputs) {
     inputAaTsv := inputs.inputAaTsv
@@ -16,6 +16,7 @@ self.body(func(inputs) {
     bulkChain := inputs.bulkChain
     cdrMappingH := inputs.cdrMappingH
     cdrMappingKL := inputs.cdrMappingKL
+    exportCdr3AaPositions := inputs.exportCdr3AaPositions
 
     // Resource configuration with defaults
     fastaMem := "4GiB"
@@ -105,10 +106,18 @@ self.body(func(inputs) {
                 arg("--kl_csv").arg("anarci.csv_KL.csv")
         }
     }
+    if exportCdr3AaPositions {
+        numberingExec = numberingExec.
+            arg("--positions_tsv").arg("positions.tsv")
+    }
+    // Always write an empty placeholder so the output is never undefined
+    numberingExec = numberingExec.
+        writeFile("positions.tsv", "clonotypeKey\tchain\tposition\taminoacid\tcount\n")
     numberingExec = numberingExec.
         arg("--out_tsv").arg("numbered.tsv").
         saveFile("numbered.tsv").
         saveFileContent("numbering_stats.tsv").
+        saveFile("positions.tsv").
         printErrStreamToStdout().
         cache(24 * 60 * 60 * 1000).
         run()
@@ -116,6 +125,7 @@ self.body(func(inputs) {
     return {
         numbered: numberingExec.getFile("numbered.tsv"),
         numberingStats: numberingExec.getFileContent("numbering_stats.tsv"),
-        anarciLog: anarciBuilder.getStdoutStream()
+        anarciLog: anarciBuilder.getStdoutStream(),
+        cdr3Positions: numberingExec.getFile("positions.tsv")
     }
 })

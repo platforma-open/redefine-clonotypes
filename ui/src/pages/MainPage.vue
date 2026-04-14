@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { PlRef } from '@platforma-sdk/model';
-import { PlAccordionSection, PlAlert, PlBlockPage, PlBtnGhost, PlDropdown, PlDropdownMulti, PlDropdownRef, PlLogView, PlMaskIcon24, PlNumberField, PlSectionSeparator, PlSlideModal, PlTabs } from '@platforma-sdk/ui-vue';
+import { PlAccordionSection, PlAlert, PlBlockPage, PlBtnGhost, PlCheckbox, PlDropdown, PlDropdownMulti, PlDropdownRef, PlLogView, PlMaskIcon24, PlNumberField, PlSectionSeparator, PlSlideModal, PlTabs } from '@platforma-sdk/ui-vue';
 import { computed, ref, watch, watchEffect } from 'vue';
 import { useApp } from '../app';
 
@@ -30,6 +30,12 @@ const numberingSchemeOptions = [
 watchEffect(() => {
   if (app.model.args.inputRef === undefined || app.model.outputs.numberingAvailable === false) {
     app.model.args.numberingScheme = undefined;
+  }
+});
+
+watchEffect(() => {
+  if (app.model.args.numberingScheme === undefined) {
+    app.model.args.exportCdr3AaPositions = false;
   }
 });
 
@@ -170,6 +176,14 @@ function numberingWarningForChain(ns: { total: number; numbered: number } | unde
           Apply IMGT, Kabat, or Chothia numbering. Requires datasets with VDJRegion or VDJRegionInFrame sequences or assembled on CDR3 (In this case, only the CDR3 region will be numbered). Transformed features are used for clonotype definition.
         </template>
       </PlDropdown>
+      <PlCheckbox
+        v-if="app.model.args.numberingScheme !== undefined"
+        :model-value="app.model.args.exportCdr3AaPositions ?? false"
+        :disabled="numberingDisabled"
+        @update:model-value="(v: boolean) => app.model.args.exportCdr3AaPositions = v"
+      >
+        Export CDR3 AA position table
+      </PlCheckbox>
 
       <PlSectionSeparator>Resource Allocation</PlSectionSeparator>
       <PlNumberField

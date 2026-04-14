@@ -10,7 +10,7 @@ numberingTpl := assets.importTemplate(":anarci-numbering")
 // Unused outputs get {} placeholder since defineOutputs requires all to be set.
 self.defineOutputs(
 	"numberingTsv", "numberingStatsTsv", "anarciLog",
-	"cdr3Tsv"
+	"cdr3Tsv", "positionsTsv"
 )
 
 self.body(func(inputs) {
@@ -29,11 +29,13 @@ self.body(func(inputs) {
 	cdrMappingKL := inputs.cdrMappingKL
 	mem := inputs.mem
 	cpu := inputs.cpu
+	exportCdr3AaPositions := inputs.exportCdr3AaPositions
 
 	numberingTsv := undefined
 	numberingStatsTsv := undefined
 	anarciLog := undefined
 	cdr3Tsv := undefined
+	positionsTsv := undefined
 
 	// VDJRegion numbering via ANARCI
 	if useVdjRegionNumbering {
@@ -79,12 +81,16 @@ self.body(func(inputs) {
 			bulkChain: bulkChain,
 			cdrMappingH: cdrMappingH,
 			cdrMappingKL: cdrMappingKL,
+			exportCdr3AaPositions: exportCdr3AaPositions,
 			mem: mem,
 			cpu: cpu
 		})
 		numberingTsv = numbering.output("numbered", 24 * 60 * 60 * 1000)
 		numberingStatsTsv = numbering.output("numberingStats", 24 * 60 * 60 * 1000)
 		anarciLog = numbering.output("anarciLog")
+		if exportCdr3AaPositions {
+			positionsTsv = numbering.output("cdr3Positions", 24 * 60 * 60 * 1000)
+		}
 	}
 
 	// CDR3 TSV building (when VDJRegion is not available)
@@ -112,6 +118,7 @@ self.body(func(inputs) {
 		numberingTsv: numberingTsv != undefined ? numberingTsv : {},
 		numberingStatsTsv: numberingStatsTsv != undefined ? numberingStatsTsv : {},
 		anarciLog: anarciLog != undefined ? anarciLog : {},
-		cdr3Tsv: cdr3Tsv != undefined ? cdr3Tsv : {}
+		cdr3Tsv: cdr3Tsv != undefined ? cdr3Tsv : {},
+		positionsTsv: positionsTsv != undefined ? positionsTsv : {}
 	}
 })
