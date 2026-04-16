@@ -1063,11 +1063,7 @@ self.body(func(inputs) {
 
 	outputs.nChains = len(args.selectedChainRefs)
 	outputs.chainLabels = chainLabels
+	outputs.pf = pfBuilder.build()
 
-	return {
-		outputs: outputs,
-		exports: {
-			pf: pfBuilder.build()
-		}
-	}
+	return outputs
 })

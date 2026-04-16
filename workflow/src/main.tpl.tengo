@@ -111,7 +111,9 @@ wf.body(func(args) {
 		clonotypeDefinition: args.clonotypeDefinition,
 		numberingScheme: args.numberingScheme,
 		customBlockLabel: args.customBlockLabel,
-		defaultBlockLabel: args.defaultBlockLabel
+		defaultBlockLabel: args.defaultBlockLabel,
+		mem: args.mem,
+		cpu: args.cpu
 	})
 
 	// --- Collect per-chain outputs ---
