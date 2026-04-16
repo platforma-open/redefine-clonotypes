@@ -9,72 +9,123 @@
 wf := import("@platforma-sdk/workflow-tengo:workflow")
 assets := import("@platforma-sdk/workflow-tengo:assets")
 render := import("@platforma-sdk/workflow-tengo:render")
-pframes := import("@platforma-sdk/workflow-tengo:pframes")
+json := import("json")
 
 processTpl := assets.importTemplate(":process")
 
-wf.body(func(args) {
-	// Build PColumn bundle (deferred — resolves asynchronously)
-	bundleBuilder := wf.createPBundleBuilder()
-	bundleBuilder.addAnchor("main", args.anchorRef)
+// --- Helpers used for per-chain bundle building ---
 
-	for i, colId in args.clonotypeDefinition {
-		bundleBuilder.addSingle(colId, "clonotypeDefinition_" + i)
-	}
-
-	bundleBuilder.addMulti({
-		axes: [{ anchor: "main", idx: 0 }, { anchor: "main", idx: 1 }],
-		annotations: {
-			"pl7.app/isAbundance": "true",
-			"pl7.app/abundance/normalized": "false"
+// Remaps anchor references in a serialized canonical column ID.
+// Used to redirect definition column IDs from "main" anchor to per-chain anchors.
+remapAnchor := func(colIdStr, fromAnchor, toAnchor) {
+	id := json.decode(colIdStr)
+	if id.axes != undefined {
+		for _, axis in id.axes {
+			if !is_undefined(axis.anchor) && axis.anchor == fromAnchor {
+				axis.anchor = toAnchor
+			}
 		}
-	}, "abundances")
+	}
+	// domainAnchor is set when the column's domain keys match the anchor's spec.domain.
+	// Unlikely for our anchors (abundance columns with no domain), but handled for correctness.
+	if !is_undefined(id.domainAnchor) && id.domainAnchor == fromAnchor {
+		id.domainAnchor = toAnchor
+	}
+	return string(json.encode(id))
+}
 
-	bundleBuilder.addMulti({
-		axes: [{ anchor: "main", idx: 1 }]
-	}, "properties")
+// Derives the chain B version of a single-cell canonical column ID.
+// Returns undefined for bulk IDs (no scClonotypeChain in domain).
+deriveChainB := func(colIdStr) {
+	id := json.decode(colIdStr)
+	if id.domain == undefined { return undefined }
+	if id.domain["pl7.app/vdj/scClonotypeChain"] != "A" { return undefined }
+	id.domain["pl7.app/vdj/scClonotypeChain"] = "B"
+	return string(json.encode(id))
+}
 
-	bundleBuilder.addMulti({
-		axes: [{ anchor: "main", idx: 1 }],
-		name: "pl7.app/vdj/sequence",
-		annotations: { "pl7.app/vdj/isAssemblingFeature": "true" }
-	}, "vdjRegionSeqs")
+wf.body(func(args) {
+	// --- Build PColumn bundle (deferred — resolves asynchronously) ---
+	bundleBuilder := wf.createPBundleBuilder()
 
-	bundleBuilder.addMulti({
-		axes: [{ anchor: "main", idx: 1 }],
-		name: "pl7.app/vdj/sequence",
-		annotations: { "pl7.app/vdj/isMainSequence": "true" },
-		domain: { "pl7.app/vdj/feature": "CDR3" }
-	}, "cdr3MainSeqs")
+	for i, chainRef in args.selectedChainRefs {
+		anchor := "chain_" + i
+		bundleBuilder.addAnchor(anchor, chainRef)
 
-	bundleBuilder.addMulti({
-		axes: [{ anchor: "main", idx: 1 }],
-		name: "pl7.app/vdj/scFv-sequence"
-	}, "scFvSeqs")
+		// Clonotype definition columns — remap anchor from "main" to per-chain
+		for j, colId in args.clonotypeDefinition {
+			remapped := remapAnchor(colId, "main", anchor)
+			bundleBuilder.addSingle(remapped, anchor + "_def_" + j)
+			// For single-cell, also register chain B equivalent
+			chainBId := deriveChainB(remapped)
+			if chainBId != undefined {
+				bundleBuilder.addSingle(chainBId, anchor + "_defB_" + j)
+			}
+		}
+
+		// All non-normalized abundance columns
+		bundleBuilder.addMulti({
+			axes: [{ anchor: anchor, idx: 0 }, { anchor: anchor, idx: 1 }],
+			annotations: {
+				"pl7.app/isAbundance": "true",
+				"pl7.app/abundance/normalized": "false"
+			}
+		}, anchor + "_abundances")
+
+		// All clonotype property columns
+		bundleBuilder.addMulti({
+			axes: [{ anchor: anchor, idx: 1 }]
+		}, anchor + "_properties")
+
+		// VDJRegion assembling feature sequences (AA/NT)
+		bundleBuilder.addMulti({
+			axes: [{ anchor: anchor, idx: 1 }],
+			name: "pl7.app/vdj/sequence",
+			annotations: { "pl7.app/vdj/isAssemblingFeature": "true" }
+		}, anchor + "_vdjRegionSeqs")
+
+		// CDR3 main sequences (AA/NT)
+		bundleBuilder.addMulti({
+			axes: [{ anchor: anchor, idx: 1 }],
+			name: "pl7.app/vdj/sequence",
+			annotations: { "pl7.app/vdj/isMainSequence": "true" },
+			domain: { "pl7.app/vdj/feature": "CDR3" }
+		}, anchor + "_cdr3MainSeqs")
+
+		// Detect scFv sequences to identify scFv mode
+		bundleBuilder.addMulti({
+			axes: [{ anchor: anchor, idx: 1 }],
+			name: "pl7.app/vdj/scFv-sequence"
+		}, anchor + "_scFvSeqs")
+	}
 
 	columns := bundleBuilder.build()
 
-	// Delegate all processing to the inner template.
-	// The inner template uses PColumnBundle await (specs only),
-	// so its body runs as soon as upstream specs are available.
+	// --- Delegate all processing to the inner template.
+	// The inner template uses PColumnBundle await (specs only), so its body
+	// runs as soon as upstream specs are available. ---
 	processResult := render.createEphemeral(processTpl, {
 		columns: columns,
 		blockId: wf.blockId().getDataAsJson(),
-		anchorRef: args.anchorRef,
+		selectedChainRefs: args.selectedChainRefs,
 		clonotypeDefinition: args.clonotypeDefinition,
 		numberingScheme: args.numberingScheme,
 		customBlockLabel: args.customBlockLabel,
-		defaultBlockLabel: args.defaultBlockLabel,
-		mem: args.mem,
-		cpu: args.cpu
+		defaultBlockLabel: args.defaultBlockLabel
 	})
 
+	// --- Collect per-chain outputs ---
 	outputs := {
-		statsTsvContent: processResult.output("statsTsvContent")
+		nChains: processResult.output("nChains"),
+		chainLabels: processResult.output("chainLabels")
 	}
-	if args.numberingScheme != undefined {
-		outputs.numberingStatsContent = processResult.output("numberingStatsContent")
-		outputs.anarciLog = processResult.output("anarciLog")
+	for i, _ in args.selectedChainRefs {
+		outputs["statsTsvContent_" + i] = processResult.output("statsTsvContent_" + i)
+		if args.numberingScheme != undefined {
+			outputs["numberingMethod_" + i] = processResult.output("numberingMethod_" + i)
+			outputs["numberingStatsContent_" + i] = processResult.output("numberingStatsContent_" + i)
+			outputs["anarciLog_" + i] = processResult.output("anarciLog_" + i)
+		}
 	}
 
 	return {

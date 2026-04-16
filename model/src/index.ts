@@ -33,7 +33,7 @@ function parseNumberingStats(tsv: string | undefined): {
   // Sample AA sequences from clonotypes ANARCI could not number (format: "key|chain|sequence")
   const samplesIdx = headers.indexOf('unnumberedSamples');
   const samplesRaw = samplesIdx !== -1 ? (values[samplesIdx] ?? '') : '';
-  const unnumberedSamples = samplesRaw ? samplesRaw.split(';').filter(Boolean) : [];
+  const unnumberedSamples = samplesRaw ? samplesRaw.split(';').filter((s) => s !== '' && s !== '""') : [];
 
   return { total, numbered: Math.max(numberedH, numberedKL), unnumberedSamples };
 }
@@ -41,7 +41,8 @@ function parseNumberingStats(tsv: string | undefined): {
 export type BlockArgs = {
   defaultBlockLabel: string;
   customBlockLabel: string;
-  anchorRef?: PlRef;
+  inputRef?: PlRef;
+  selectedChainRefs: PlRef[];
   clonotypeDefinition: SUniversalPColumnId[];
   numberingScheme?: 'imgt' | 'kabat' | 'chothia';
   mem?: number;
@@ -53,37 +54,126 @@ export const model = BlockModel.create()
   .withArgs<BlockArgs>({
     defaultBlockLabel: getDefaultBlockLabel({ clonotypeDefinitionLabels: [] }),
     customBlockLabel: '',
+    selectedChainRefs: [],
     clonotypeDefinition: [],
   })
 
-  .argsValid((ctx) => ctx.args.anchorRef !== undefined && (ctx.args.clonotypeDefinition?.length ?? 0) > 0)
+  .argsValid((ctx) => ctx.args.inputRef !== undefined && ctx.args.selectedChainRefs.length > 0 && (ctx.args.clonotypeDefinition?.length ?? 0) > 0)
 
-  .output('datasetOptions', (ctx) => {
-    const options = ctx.resultPool.getOptions([{
+  .output('inputOptions', (ctx) => {
+    // Discover clonotyping runs by finding anchor columns with clonotypingRunId.
+    const options = ctx.resultPool.getOptions([
+      {
+        axes: [{ name: 'pl7.app/sampleId' }, { name: 'pl7.app/vdj/clonotypeKey' }],
+        annotations: { 'pl7.app/isAnchor': 'true' },
+      },
+      {
+        axes: [{ name: 'pl7.app/sampleId' }, { name: 'pl7.app/vdj/scClonotypeKey' }],
+        annotations: { 'pl7.app/isAnchor': 'true' },
+      },
+    ], {
+      label: {
+        includeNativeLabel: false,
+        forceTraceElements: [
+          'milaboratories.samples-and-data/dataset',
+        ],
+      },
+    }) ?? [];
+
+    // Strip chain/receptor suffix from labels — chain selection is handled by a separate dropdown.
+    // Bulk exports: "IG Heavy", "IG Light", etc. Single-cell exports: "IG", "TCRAB", "TCRGD".
+    const chainSuffix = / \/ (?:IG Heavy|IG Light|TCR Alpha|TCR Beta|TCR Gamma|TCR Delta|IG|TCRAB|TCRGD)$/;
+
+    // Block trace types whose label can disambiguate runs from the same dataset
+    const blockTraceTypes = new Set([
+      'milaboratories.mixcr-clonotyping',
+      'milaboratories.mixcr-amplicon-alignment',
+      'milaboratories.mixcr-scfv-clonotyping',
+      'milaboratories.importVDJ',
+    ]);
+
+    const seenRunIds = new Set<string>();
+    const deduplicated = options
+      .filter((opt) => {
+        const spec = ctx.resultPool.getPColumnSpecByRef(opt.ref);
+        const runId = spec?.axesSpec[1]?.domain?.['pl7.app/vdj/clonotypingRunId'];
+        if (!runId || seenRunIds.has(runId)) return false;
+        if (spec?.axesSpec[1]?.domain?.['pl7.app/redefined-by'] !== undefined) return false;
+        seenRunIds.add(runId);
+        return true;
+      })
+      .map((opt) => {
+        // Strip chain/receptor suffix from labels
+        const label = opt.label.replace(chainSuffix, '');
+        // Parse block label from trace for disambiguation when needed
+        const spec = ctx.resultPool.getPColumnSpecByRef(opt.ref);
+        const traceStr = spec?.annotations?.['pl7.app/trace'];
+        let blockLabel: string | undefined;
+        if (traceStr) {
+          try {
+            const trace = JSON.parse(traceStr) as { type: string; label: string }[];
+            blockLabel = trace.find((t) => blockTraceTypes.has(t.type))?.label;
+          } catch { /* ignore */ }
+        }
+        return { ...opt, label, blockLabel };
+      });
+
+    // If any labels collide after stripping, append the block label to disambiguate
+    const labelCounts = new Map<string, number>();
+    for (const opt of deduplicated) {
+      labelCounts.set(opt.label, (labelCounts.get(opt.label) ?? 0) + 1);
+    }
+
+    return deduplicated.map(({ blockLabel, ...opt }) => {
+      if ((labelCounts.get(opt.label) ?? 0) > 1 && blockLabel) {
+        return { ...opt, label: `${opt.label} / ${blockLabel}` };
+      }
+      return opt;
+    });
+  })
+
+  .output('chainOptions', (ctx) => {
+    const run = ctx.args.inputRef;
+    if (run === undefined) return undefined;
+
+    // Extract clonotypingRunId from the selected anchor column's clonotypeKey axis
+    const runSpec = ctx.resultPool.getPColumnSpecByRef(run);
+    if (!runSpec) return undefined;
+    const runId = runSpec.axesSpec[1]?.domain?.['pl7.app/vdj/clonotypingRunId'];
+    if (!runId) return undefined;
+
+    // Find all chain/isotype tables associated with this run
+    return ctx.resultPool.getOptions([{
       axes: [
         { name: 'pl7.app/sampleId' },
-        { name: 'pl7.app/vdj/clonotypeKey' },
+        { name: 'pl7.app/vdj/clonotypeKey',
+          domain: { 'pl7.app/vdj/clonotypingRunId': runId },
+        },
       ],
       annotations: { 'pl7.app/isAnchor': 'true' },
     }, {
       axes: [
         { name: 'pl7.app/sampleId' },
-        { name: 'pl7.app/vdj/scClonotypeKey' },
+        { name: 'pl7.app/vdj/scClonotypeKey',
+          domain: { 'pl7.app/vdj/clonotypingRunId': runId },
+        },
       ],
       annotations: { 'pl7.app/isAnchor': 'true' },
     }],
     {
       label: { includeNativeLabel: false },
-    });
-
-    return options.filter((option) => {
-      const spec = ctx.resultPool.getPColumnSpecByRef(option.ref);
-      return spec?.axesSpec[1]?.domain?.['pl7.app/redefined-by'] === undefined;
-    });
+    })
+      .filter((opt) => {
+        // Exclude chains already redefined by this or another redefine-clonotypes block
+        const spec = ctx.resultPool.getPColumnSpecByRef(opt.ref);
+        return spec?.axesSpec[1]?.domain?.['pl7.app/redefined-by'] === undefined;
+      })
+      .map((opt) => ({ value: opt.ref, label: opt.label }));
   })
 
   .output('clonotypeDefinitionOptions', (ctx) => {
-    const anchor = ctx.args.anchorRef;
+    // Use the first selected chain as reference for options
+    const anchor = ctx.args.selectedChainRefs[0];
     if (anchor === undefined) return undefined;
 
     const isSingleCell = ctx.resultPool.getPColumnSpecByRef(anchor)?.axesSpec[1].name === 'pl7.app/vdj/scClonotypeKey';
@@ -93,7 +183,7 @@ export const model = BlockModel.create()
       sequenceDomain['pl7.app/vdj/scClonotypeChain/index'] = 'primary';
     }
 
-    return ctx.resultPool.getCanonicalOptions({ main: anchor },
+    const options = ctx.resultPool.getCanonicalOptions({ main: anchor },
       [
         {
           axes: [{ anchor: 'main', idx: 1 }],
@@ -106,10 +196,26 @@ export const model = BlockModel.create()
         },
       ],
     );
+
+    if (!isSingleCell || !options) return options;
+
+    // For single-cell: keep only chain A options (chain B equivalents are auto-included
+    // by the workflow) and strip the chain name prefix from labels so they are stable
+    // across receptor types (e.g., "Heavy CDR3 aa Primary" → "CDR3 aa Primary")
+    const chainNamePattern = /^(?:Heavy|Light|Alpha|Beta|Gamma|Delta)\s+/;
+    return options
+      .filter((opt) => {
+        const id = JSON.parse(opt.value as string) as { domain?: Record<string, string> };
+        return id.domain?.['pl7.app/vdj/scClonotypeChain'] === 'A';
+      })
+      .map((opt) => ({
+        ...opt,
+        label: opt.label.replace(chainNamePattern, ''),
+      }));
   })
 
   .output('numberingAvailable', (ctx) => {
-    const anchor = ctx.args.anchorRef;
+    const anchor = ctx.args.selectedChainRefs[0];
     if (anchor === undefined) return false;
 
     const anchorSpec = ctx.resultPool.getPColumnSpecByRef(anchor);
@@ -198,38 +304,55 @@ export const model = BlockModel.create()
     return hasRequiredChains(cdr3Candidates);
   }, { retentive: true })
 
-  .output('stats', (ctx) => {
-    const tsv = ctx.outputs?.resolve('statsTsvContent')?.getDataAsString();
-    if (!tsv) {
-      return undefined;
-    }
-    const lines = tsv.trim().split('\n');
-    if (lines.length !== 2) {
-      return undefined;
-    }
-    const headers = lines[0].split('\t');
-    const values = lines[1].split('\t');
-    const beforeIndex = headers.indexOf('nClonotypesBefore');
-    const afterIndex = headers.indexOf('nClonotypesAfter');
-
-    if (beforeIndex === -1 || afterIndex === -1) {
-      return undefined;
-    }
-
-    return {
-      nClonotypesBefore: parseInt(values[beforeIndex], 10),
-      nClonotypesAfter: parseInt(values[afterIndex], 10),
-    };
+  .output('runChainLabels', (ctx) => {
+    return ctx.outputs?.resolve({ field: 'chainLabels', assertFieldType: 'Input', allowPermanentAbsence: true })?.getDataAsJson();
   })
 
-  .output('numberingStats', (ctx) => {
+  .output('perChainStats', (ctx) => {
+    const n = Number(ctx.outputs?.resolve({ field: 'nChains', assertFieldType: 'Input', allowPermanentAbsence: true })?.getDataAsJson());
+    if (!n || !Number.isFinite(n)) return undefined;
+    return Array.from({ length: n }, (_, i) => {
+      const tsv = ctx.outputs?.resolve(`statsTsvContent_${i}`)?.getDataAsString();
+      if (!tsv) return undefined;
+      const lines = tsv.trim().split('\n');
+      if (lines.length !== 2) return undefined;
+      const headers = lines[0].split('\t');
+      const values = lines[1].split('\t');
+      const beforeIndex = headers.indexOf('nClonotypesBefore');
+      const afterIndex = headers.indexOf('nClonotypesAfter');
+      if (beforeIndex === -1 || afterIndex === -1) return undefined;
+      return {
+        nClonotypesBefore: parseInt(values[beforeIndex], 10),
+        nClonotypesAfter: parseInt(values[afterIndex], 10),
+      };
+    });
+  })
+
+  .output('perChainNumberingStats', (ctx) => {
     if (!ctx.args.numberingScheme) return undefined;
-    const tsv = ctx.outputs?.resolve({ field: 'numberingStatsContent', assertFieldType: 'Input', allowPermanentAbsence: true })?.getDataAsString();
-    return parseNumberingStats(tsv);
+    const n = Number(ctx.outputs?.resolve({ field: 'nChains', assertFieldType: 'Input', allowPermanentAbsence: true })?.getDataAsJson());
+    if (!n || !Number.isFinite(n)) return undefined;
+    return Array.from({ length: n }, (_, i) => {
+      const tsv = ctx.outputs?.resolve({ field: `numberingStatsContent_${i}`, assertFieldType: 'Input', allowPermanentAbsence: true })?.getDataAsString();
+      return parseNumberingStats(tsv);
+    });
   })
 
-  .output('anarciLog', (ctx) => {
-    return ctx.outputs?.resolve({ field: 'anarciLog', assertFieldType: 'Input', allowPermanentAbsence: true })?.getLogHandle();
+  .output('perChainAnarciLog', (ctx) => {
+    const n = Number(ctx.outputs?.resolve({ field: 'nChains', assertFieldType: 'Input', allowPermanentAbsence: true })?.getDataAsJson());
+    if (!n || !Number.isFinite(n)) return undefined;
+    return Array.from({ length: n }, (_, i) => {
+      return ctx.outputs?.resolve({ field: `anarciLog_${i}`, assertFieldType: 'Input', allowPermanentAbsence: true })?.getLogHandle();
+    });
+  })
+
+  .output('perChainNumberingMethod', (ctx) => {
+    if (!ctx.args.numberingScheme) return undefined;
+    const n = Number(ctx.outputs?.resolve({ field: 'nChains', assertFieldType: 'Input', allowPermanentAbsence: true })?.getDataAsJson());
+    if (!n || !Number.isFinite(n)) return undefined;
+    return Array.from({ length: n }, (_, i) => {
+      return ctx.outputs?.resolve({ field: `numberingMethod_${i}`, assertFieldType: 'Input', allowPermanentAbsence: true })?.getDataAsJson();
+    });
   })
 
   .output('isRunning', (ctx) => ctx.outputs?.getIsReadyOrError() === false)

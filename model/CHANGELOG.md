@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.redefine-clonotypes.model
 
+## 1.8.0
+
+### Minor Changes
+
+- b9d2ca5: Multiple chain selection
+
 ## 1.7.0
 
 ### Minor Changes
