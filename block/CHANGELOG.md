@@ -1,5 +1,16 @@
 # @platforma-open/milaboratories.redefine-clonotypes
 
+## 1.5.0
+
+### Minor Changes
+
+- 7f20d6f: Fix early spec export: replace wf.prepare with PColumnBundle await so downstream blocks can configure inputs before computation completes
+
+### Patch Changes
+
+- Updated dependencies [7f20d6f]
+  - @platforma-open/milaboratories.redefine-clonotypes.workflow@1.10.0
+
 ## 1.4.1
 
 ### Patch Changes
