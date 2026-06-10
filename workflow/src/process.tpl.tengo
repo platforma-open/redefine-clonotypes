@@ -10,6 +10,7 @@ pt := import("@platforma-sdk/workflow-tengo:pt")
 pframes := import("@platforma-sdk/workflow-tengo:pframes")
 pSpec := import("@platforma-sdk/workflow-tengo:pframes.spec")
 text := import("text")
+times := import("times")
 slices := import("@platforma-sdk/workflow-tengo:slices")
 maps := import("@platforma-sdk/workflow-tengo:maps")
 xsv := import("@platforma-sdk/workflow-tengo:pframes.xsv")
@@ -21,9 +22,24 @@ anonymizationTpl := assets.importTemplate(":anonymization")
 deanonimizationTpl := assets.importTemplate(":deanonimization")
 numberingPrepTpl := assets.importTemplate(":numbering-prep")
 
+// Cache window for the heavy computation chain (TSV exporters + pt computation),
+// so re-runs recover results instead of recomputing.
+cacheTime := 48 * times.hour
+
 self.awaitState("columns", "PColumnBundle")
 
 // --- Helper functions ---
+// Stable ordering for column lists returned by bundle.getColumns(). The bundle
+// preserves no deterministic order across runs, so positional headers
+// (property_N, abundance_N) and any command spec derived from iteration order
+// would otherwise differ run-to-run, breaking backend computation
+// deduplication. Sort by the canonical column key (stable across runs).
+sortColsByKey := func(cols) {
+	return slices.quickSortFn(cols, func(a, b) {
+		return a.key < b.key
+	})
+}
+
 // Generate clonotype label columns from key using pt expressions.
 addClonotypeLabelColumnsPt := func(df, clonotypeKeyCol, clonotypeLabelCol) {
 	prefixTempCol := clonotypeLabelCol + "_prefix_temp"
@@ -142,8 +158,8 @@ self.body(func(inputs) {
 	for chainIdx, chainRef in args.selectedChainRefs {
 		anchor := "chain_" + chainIdx
 
-		abundanceCols := columns.getColumns(anchor + "_abundances")
-		propertyCols := columns.getColumns(anchor + "_properties")
+		abundanceCols := sortColsByKey(columns.getColumns(anchor + "_abundances"))
+		propertyCols := sortColsByKey(columns.getColumns(anchor + "_properties"))
 
 		ll.assert(len(abundanceCols) > 0, "No abundance columns found in the dataset")
 
@@ -207,9 +223,9 @@ self.body(func(inputs) {
 
 		if numberingEnabled {
 			// --- Chain detection (runs in main template — needs column data refs) ---
-			vdjRegionCols := columns.getColumns(anchor + "_vdjRegionSeqs")
-			scFvCols := columns.getColumns(anchor + "_scFvSeqs")
-			cdr3Cols := columns.getColumns(anchor + "_cdr3MainSeqs")
+			vdjRegionCols := sortColsByKey(columns.getColumns(anchor + "_vdjRegionSeqs"))
+			scFvCols := sortColsByKey(columns.getColumns(anchor + "_scFvSeqs"))
+			cdr3Cols := sortColsByKey(columns.getColumns(anchor + "_cdr3MainSeqs"))
 
 			allowedFeatures := { "VDJRegion": true, "VDJRegionInFrame": true }
 			aaByChain := {}
@@ -451,6 +467,7 @@ self.body(func(inputs) {
 		abundanceTsvBuilder := pframes.tsvFileBuilder()
 		abundanceTsvBuilder.mem(mem)
 		abundanceTsvBuilder.cpu(convCpu)
+		abundanceTsvBuilder.cacheInputs(cacheTime)
 		abundanceTsvBuilder.setAxisHeader(sampleIdAxisSpec, "sampleId")
 		abundanceTsvBuilder.setAxisHeader(clonotypeKeyAxisSpec, "clonotypeKey")
 	
@@ -510,6 +527,7 @@ self.body(func(inputs) {
 		propertyTsvBuilder := pframes.tsvFileBuilder()
 		propertyTsvBuilder.mem(mem)
 		propertyTsvBuilder.cpu(convCpu)
+		propertyTsvBuilder.cacheInputs(cacheTime)
 		propertyTsvBuilder.setAxisHeader(clonotypeKeyAxisSpec, "clonotypeKey")
 		propertyHeaders := {}
 		for i, col in propertyCols {
@@ -574,7 +592,8 @@ self.body(func(inputs) {
 		// Build abundance output columns: unnormalized (counts) and normalized 
 		// (fraction of total).
 		newAbundanceColumns := []
-		for header, col in abundanceHeaders {
+		for _, header in maps.getKeys(abundanceHeaders) {
+			col := abundanceHeaders[header]
 			newSpecUnnormalized := maps.clone(col.spec)
 			delete(newSpecUnnormalized, "axesSpec")
 			newAbundanceColumns = append(newAbundanceColumns, {
@@ -680,7 +699,8 @@ self.body(func(inputs) {
 			}
 		}
 
-		for header, col in propertyHeaders {
+		for _, header in maps.getKeys(propertyHeaders) {
+			col := propertyHeaders[header]
 			newSpec := maps.clone(col.spec)
 			delete(newSpec, "axesSpec")
 			if numberingEnabled && col.spec.name == "pl7.app/vdj/sequence" {
@@ -804,7 +824,7 @@ self.body(func(inputs) {
 		// 1. Calculate per-sample totals for each abundance column for normalization
 		sampleTotalAggs := []
 		totalColumnHeaders := []
-		for header, _ in abundanceHeaders {
+		for _, header in maps.getKeys(abundanceHeaders) {
 			totalHeader := header + "_total"
 			sampleTotalAggs = append(sampleTotalAggs, pt.col(header).sum().alias(totalHeader))
 			totalColumnHeaders = append(totalColumnHeaders, totalHeader)
@@ -859,7 +879,7 @@ self.body(func(inputs) {
 		df_abundances = df_abundances.join(sampleTotalsDf, {on: "sampleId", how: "left"})
 
 		normExpressions := []
-		for header, _ in abundanceHeaders {
+		for _, header in maps.getKeys(abundanceHeaders) {
 			normExpressions = append(normExpressions,
 				pt.col(header).cast("Double").truediv(pt.col(header + "_total").cast("Double")).alias("normalized_" + header)
 			)
@@ -953,7 +973,7 @@ self.body(func(inputs) {
 		// from the most-abundant representative. When numbering is enabled, use
 		// the numbered version of sequence/annotation columns instead.
 		aggExpressions := []
-		for h, _ in propertyHeaders {
+		for _, h in maps.getKeys(propertyHeaders) {
 			col := propertyHeaders[h]
 			useNumbered := false
 			// CDR annotation columns → use ANARCI-derived annotations if available
@@ -1029,9 +1049,9 @@ self.body(func(inputs) {
 		
 		// Execute the pt workflow and collected results
 		ptResult := ptWf.run()
-		finalAbundancesTsvRaw := ptResult.getFile("abundances.tsv")
-		finalPropertiesTsv := ptResult.getFile("properties.tsv")
-		statsTsvContent := ptResult.getFileContent("stats.tsv")
+		finalAbundancesTsvRaw := ptResult.getFile("abundances.tsv").setCache(cacheTime)
+		finalPropertiesTsv := ptResult.getFile("properties.tsv").setCache(cacheTime)
+		statsTsvContent := ptResult.getFileContent("stats.tsv").setCache(cacheTime)
 
 		// --- Deanonymize abundances ---
 		abundancesDeanonimization := render.createEphemeral(
