@@ -106,7 +106,6 @@ wf.body(func(args) {
 	// runs as soon as upstream specs are available. ---
 	processResult := render.createEphemeral(processTpl, {
 		columns: columns,
-		blockId: wf.blockId().getDataAsJson(),
 		selectedChainRefs: args.selectedChainRefs,
 		clonotypeDefinition: args.clonotypeDefinition,
 		numberingScheme: args.numberingScheme,
