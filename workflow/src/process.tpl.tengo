@@ -15,7 +15,6 @@ slices := import("@platforma-sdk/workflow-tengo:slices")
 maps := import("@platforma-sdk/workflow-tengo:maps")
 xsv := import("@platforma-sdk/workflow-tengo:pframes.xsv")
 json := import("json")
-canonical := import("@platforma-sdk/workflow-tengo:canonical")
 assets := import("@platforma-sdk/workflow-tengo:assets")
 render := import("@platforma-sdk/workflow-tengo:render")
 
@@ -140,6 +139,7 @@ self.body(func(inputs) {
 	// Alias so that the body references `args` as in the original workflow.
 	args := inputs
 	columns := args.columns
+	blockId := args.blockId
 
 	// --- Resource configuration ---
 	mem := "16GiB"
@@ -573,23 +573,15 @@ self.body(func(inputs) {
 			label: traceLabel
 		})
 
-		// Mark the new clonotype key axis with a content tag derived from the
-		// definition structure (NOT the per-block blockId), and encode that
-		// structure so downstream blocks know which columns built the key.
-		// canonical.encode (key-sorted) is required: this string lands in the axis
-		// domain, and json.encode would reorder map keys each run — changing the
-		// axis identity and breaking dedup of every import keyed on it. Identical
-		// redefinitions across blocks now produce the same axis (dedupe), while
-		// different definitions stay distinct; the dataset is already distinguished
-		// by the cloned original clonotype-key axis domain.
-		definitionStructureJson := canonical.encode(definitionStructure)
-		redefinedBy := ll.base32Encode(ll.sha256Encode(definitionStructureJson)[0:16])
+		// Mark the new clonotype key axis as redefined by this block, and encode
+		// the new definition structure so downstream blocks know what columns
+		// were used to build the key.
 		newClonotypeKeySpec := maps.clone(clonotypeKeyAxisSpec)
 		newClonotypeKeySpec.domain = maps.merge(newClonotypeKeySpec.domain, {
-			"pl7.app/redefined-by": redefinedBy
+			"pl7.app/redefined-by": blockId
 		})
 		structureKey := isSingleCell ? "pl7.app/vdj/scClonotypeKey/structure" : "pl7.app/vdj/clonotypeKey/structure"
-		newClonotypeKeySpec.domain[structureKey] = string(definitionStructureJson)
+		newClonotypeKeySpec.domain[structureKey] = string(json.encode(definitionStructure))
 
 		// --- Abundance output column specs ---
 		abundanceAxes := [

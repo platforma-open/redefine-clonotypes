@@ -105,6 +105,7 @@ wf.body(func(args) {
 	// The inner template uses PColumnBundle await (specs only), so its body
 	// runs as soon as upstream specs are available. ---
 	processResult := render.createEphemeral(processTpl, {
+		blockId: wf.blockId().getDataAsJson(),
 		columns: columns,
 		selectedChainRefs: args.selectedChainRefs,
 		clonotypeDefinition: args.clonotypeDefinition,
