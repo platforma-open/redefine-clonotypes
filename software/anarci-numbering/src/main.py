@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 import re
+import sys
 from typing import Dict, List, Optional, Tuple
 
 import polars as pl
@@ -84,7 +85,59 @@ def parse_positions(fields: List[str]) -> List[str]:
     return fields[start_idx:]
 
 
-def load_anarci_csv(path: Optional[str]) -> Tuple[Dict[str, List[str]], List[str]]:
+# Indices whose insertion letters run backwards, e.g. IMGT 112 is emitted as
+# 112J ... 112A, 112. IMGT fills its CDRs from both ends, so the second index of
+# each pair counts down; Kabat and Chothia only ever count up.
+REVERSE_INSERTION_INDICES: Dict[str, frozenset] = {
+    "imgt": frozenset({33, 61, 112}),
+    "kabat": frozenset(),
+    "chothia": frozenset(),
+}
+
+
+def split_position_label(label: str) -> Optional[Tuple[int, str]]:
+    """Split "82A" into (82, "A"). Returns None for anything unrecognised."""
+    m = re.match(r"^(\d+)([A-Za-z]*)$", label)
+    if not m:
+        return None
+    return int(m.group(1)), m.group(2).upper()
+
+
+def sort_positions(labels: List[str], scheme: str) -> List[str]:
+    """Rebuild the numbering order of ANARCI's CSV columns.
+
+    ANARCI orders its header by insertion ranks pooled across the whole file
+    (`csv_output` in anarci.py). A sequence carrying a deletion beside an
+    insertion slot leaves two positions sharing a rank, and that tie is broken
+    by `set` iteration order, which Python randomises per process. Both the
+    column labels and the values under them are correct; only their order is
+    wrong, so the order is rebuilt here.
+
+    Direction is taken from the scheme rather than inferred from the header,
+    because the header is the thing that may be corrupted.
+    """
+    reverse_indices = REVERSE_INSERTION_INDICES.get(scheme, frozenset())
+    parsed = [(split_position_label(label), label) for label in labels]
+    if any(key is None for key, _ in parsed):
+        return list(labels)
+
+    groups: Dict[int, List[Tuple[str, str]]] = {}
+    for key, label in parsed:
+        assert key is not None
+        groups.setdefault(key[0], []).append((key[1], label))
+
+    ordered: List[str] = []
+    for num in sorted(groups):
+        members = sorted(
+            groups[num], key=lambda m: m[0], reverse=num in reverse_indices
+        )
+        ordered.extend(label for _, label in members)
+    return ordered
+
+
+def load_anarci_csv(
+    path: Optional[str], scheme: str
+) -> Tuple[Dict[str, List[str]], List[str]]:
     if not path or not os.path.exists(path):
         return {}, []
     df = pl.read_csv(path, infer_schema_length=0)
@@ -93,6 +146,16 @@ def load_anarci_csv(path: Optional[str]) -> Tuple[Dict[str, List[str]], List[str
     rows: Dict[str, List[str]] = {}
     if "Id" not in df.columns or len(positions) == 0:
         return rows, positions
+    ordered = sort_positions(positions, scheme)
+    if ordered != positions:
+        moved = [f"{a}->{b}" for a, b in zip(positions, ordered) if a != b]
+        sys.stderr.write(
+            f"WARNING: {os.path.basename(path)} lists numbering columns out of "
+            f"order; reordering {len(moved)} of {len(positions)} before building "
+            f"regions ({', '.join(moved[:6])}). This happens when a sequence in "
+            f"the batch carries a deletion beside an insertion slot.\n"
+        )
+        positions = ordered
     df = df.select(["Id"] + positions)
     for row in df.iter_rows(named=True):
         row_id = (row.get("Id") or "").strip()
@@ -287,8 +350,8 @@ def main() -> None:
     has_kl = "vdjRegion_aa_KL" in fields
     chains = [c for c in ("H", "KL") if (c == "H" and has_h) or (c == "KL" and has_kl)]
 
-    anarci_h, pos_h = load_anarci_csv(args.h_csv)
-    anarci_kl, pos_kl = load_anarci_csv(args.kl_csv)
+    anarci_h, pos_h = load_anarci_csv(args.h_csv, args.scheme)
+    anarci_kl, pos_kl = load_anarci_csv(args.kl_csv, args.scheme)
     anarci_by_chain = {"H": (anarci_h, pos_h), "KL": (anarci_kl, pos_kl)}
 
     cdr_mapping_by_chain = {
