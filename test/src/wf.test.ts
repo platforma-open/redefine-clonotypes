@@ -2,7 +2,7 @@
 import { blockSpec as clonotypingBlockSpec } from "@platforma-open/milaboratories.mixcr-clonotyping-2";
 import type { BlockArgs as MiXCRClonotypingBlockArgs } from "@platforma-open/milaboratories.mixcr-clonotyping-2.model";
 import { uniquePlId } from "@platforma-open/milaboratories.mixcr-clonotyping-2.model";
-import type { BlockArgs } from "@platforma-open/milaboratories.redefine-clonotypes.model";
+import type { BlockData } from "@platforma-open/milaboratories.redefine-clonotypes.model";
 import { blockSpec as samplesAndDataBlockSpec } from "@platforma-open/milaboratories.samples-and-data";
 import type { BlockArgs as SamplesAndDataBlockArgs } from "@platforma-open/milaboratories.samples-and-data.model";
 import { wrapOutputs } from "@platforma-sdk/model";
@@ -105,13 +105,16 @@ blockTest(
     const inputRef = runOpts[0].ref;
 
     // Step 2: Select run, wait for chain options
-    await project.setBlockArgs(redefineBlockId, {
-      defaultBlockLabel: "",
-      customBlockLabel: "",
-      inputRef,
-      selectedChainRefs: [],
-      clonotypeDefinition: [],
-    } satisfies BlockArgs);
+    await project.mutateBlockStorage(redefineBlockId, {
+      operation: "update-block-data",
+      value: {
+        defaultBlockLabel: "",
+        customBlockLabel: "",
+        inputRef,
+        selectedChainRefs: [],
+        clonotypeDefinition: [],
+      } satisfies BlockData,
+    });
 
     const redefineState2 = await awaitStableState(project.getBlockState(redefineBlockId), 60000);
     const redefineOutputs2 = redefineState2.outputs as Record<string, any>;
@@ -121,13 +124,16 @@ blockTest(
     const selectedChainRefs = chainOpts.map((o: any) => o.value);
 
     // Step 3: Select chains, wait for definition options
-    await project.setBlockArgs(redefineBlockId, {
-      defaultBlockLabel: "",
-      customBlockLabel: "",
-      inputRef,
-      selectedChainRefs,
-      clonotypeDefinition: [],
-    } satisfies BlockArgs);
+    await project.mutateBlockStorage(redefineBlockId, {
+      operation: "update-block-data",
+      value: {
+        defaultBlockLabel: "",
+        customBlockLabel: "",
+        inputRef,
+        selectedChainRefs,
+        clonotypeDefinition: [],
+      } satisfies BlockData,
+    });
 
     const redefineState3 = await awaitStableState(project.getBlockState(redefineBlockId), 60000);
     const redefineOutputs3 = redefineState3.outputs as Record<string, any>;
@@ -139,13 +145,16 @@ blockTest(
     const cdr3AaOpt = defOpts.find((o: any) => o.label?.includes("CDR3 aa"));
     const selectedDef = cdr3AaOpt ?? defOpts[0];
 
-    await project.setBlockArgs(redefineBlockId, {
-      defaultBlockLabel: "",
-      customBlockLabel: "",
-      inputRef,
-      selectedChainRefs,
-      clonotypeDefinition: [selectedDef.value],
-    } satisfies BlockArgs);
+    await project.mutateBlockStorage(redefineBlockId, {
+      operation: "update-block-data",
+      value: {
+        defaultBlockLabel: "",
+        customBlockLabel: "",
+        inputRef,
+        selectedChainRefs,
+        clonotypeDefinition: [selectedDef.value],
+      } satisfies BlockData,
+    });
 
     await project.runBlock(redefineBlockId);
     const redefineState4 = await helpers.awaitBlockDoneAndGetStableBlockState(
@@ -180,15 +189,18 @@ blockTest(
     const inputRef = runOpts[0].ref;
 
     // Step 2: Select run, wait for chain options
-    await project.setBlockArgs(redefineBlockId, {
-      defaultBlockLabel: "",
-      customBlockLabel: "",
-      inputRef,
-      selectedChainRefs: [],
-      clonotypeDefinition: [],
-      mem: 32,
-      cpu: 2,
-    } satisfies BlockArgs);
+    await project.mutateBlockStorage(redefineBlockId, {
+      operation: "update-block-data",
+      value: {
+        defaultBlockLabel: "",
+        customBlockLabel: "",
+        inputRef,
+        selectedChainRefs: [],
+        clonotypeDefinition: [],
+        mem: 32,
+        cpu: 2,
+      } satisfies BlockData,
+    });
 
     const redefineState2 = await awaitStableState(project.getBlockState(redefineBlockId), 60000);
     const chainOpts = (redefineState2.outputs as Record<string, any>).chainOptions?.value ?? [];
@@ -196,15 +208,18 @@ blockTest(
     const selectedChainRefs = chainOpts.map((o: any) => o.value);
 
     // Step 3: Select chains, wait for definition options
-    await project.setBlockArgs(redefineBlockId, {
-      defaultBlockLabel: "",
-      customBlockLabel: "",
-      inputRef,
-      selectedChainRefs,
-      clonotypeDefinition: [],
-      mem: 32,
-      cpu: 2,
-    } satisfies BlockArgs);
+    await project.mutateBlockStorage(redefineBlockId, {
+      operation: "update-block-data",
+      value: {
+        defaultBlockLabel: "",
+        customBlockLabel: "",
+        inputRef,
+        selectedChainRefs,
+        clonotypeDefinition: [],
+        mem: 32,
+        cpu: 2,
+      } satisfies BlockData,
+    });
 
     const redefineState3 = await awaitStableState(project.getBlockState(redefineBlockId), 60000);
     const defOpts =
@@ -214,15 +229,18 @@ blockTest(
     const cdr3AaOpt = defOpts.find((o: any) => o.label?.includes("CDR3 aa"));
     const selectedDef = cdr3AaOpt ?? defOpts[0];
 
-    await project.setBlockArgs(redefineBlockId, {
-      defaultBlockLabel: "",
-      customBlockLabel: "",
-      inputRef,
-      selectedChainRefs,
-      clonotypeDefinition: [selectedDef.value],
-      mem: 32,
-      cpu: 2,
-    } satisfies BlockArgs);
+    await project.mutateBlockStorage(redefineBlockId, {
+      operation: "update-block-data",
+      value: {
+        defaultBlockLabel: "",
+        customBlockLabel: "",
+        inputRef,
+        selectedChainRefs,
+        clonotypeDefinition: [selectedDef.value],
+        mem: 32,
+        cpu: 2,
+      } satisfies BlockData,
+    });
 
     await project.runBlock(redefineBlockId);
     const redefineState4 = await helpers.awaitBlockDoneAndGetStableBlockState(
