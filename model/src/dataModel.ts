@@ -5,9 +5,8 @@ import type { BlockData, LegacyBlockArgs } from "./types";
 
 export const blockDataModel = new DataModelBuilder({ kind })
   .from<BlockData>("v1")
-  // V1 held every field in `args` and declared no `uiState`, so the upgrade is
-  // a field-for-field lift with defaults for anything a V1 project could have
-  // been saved without.
+  // A field-for-field lift, with defaults for every field the legacy shape
+  // allows to be absent.
   .upgradeLegacy<LegacyBlockArgs, Record<string, never>>(({ args }) => ({
     defaultBlockLabel:
       args?.defaultBlockLabel ?? getDefaultBlockLabel({ clonotypeDefinitionLabels: [] }),

@@ -14,13 +14,12 @@ const NUMBERING_SCHEMES: readonly string[] = ["imgt", "kabat", "chothia"];
  * new clonotype definition, the numbering scheme, the subtitle they type, and
  * the resource knobs.
  *
- * Left out: `defaultBlockLabel`, which a `watchEffect` in `ui/src/app.ts`
- * derives from the chosen definition's option labels.
+ * `defaultBlockLabel` is absent: a `watchEffect` in `ui/src/app.ts` derives it
+ * from the chosen definition's option labels.
  *
- * Every field is optional because the projection hands live state back
- * untouched, and a half-configured block is ordinary state the UI reaches.
- * Requiring one would make the block export a file its own kind refuses to
- * apply, so export and apply would stop being inverses.
+ * Every field is optional. A half-configured block is ordinary state the UI
+ * reaches, and the projection hands that state back untouched, so a required
+ * field would break the export/apply round trip.
  */
 export type BlockParams = {
   inputRef?: PlRef;
@@ -67,12 +66,9 @@ function parseInitializationParams(value: unknown): BlockParams {
   if (customBlockLabel !== undefined && typeof customBlockLabel !== "string") {
     throw new Error("'customBlockLabel' must be a string.");
   }
-  // The bounds are the ones the UI's own number fields enforce -- memory 1-1012
-  // GiB, CPU 1-128 cores, integer steps -- so the editor cannot produce a value
-  // outside them and this check leaves the parser exactly as strict as the
-  // editor. A template is the only way an out-of-range value can arrive, and
-  // the workflow forwards mem and cpu straight to resource scheduling, so
-  // refusing it here fails the template instead of the run it would start.
+  // Memory 1-1012 GiB and CPU 1-128 cores in integer steps are the ranges the
+  // UI's number fields accept. The workflow forwards both straight to resource
+  // scheduling, where a value outside them fails the run.
   if (
     mem !== undefined &&
     (typeof mem !== "number" || !Number.isInteger(mem) || mem < 1 || mem > 1012)

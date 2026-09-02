@@ -49,11 +49,9 @@ export { blockDataModel } from "./dataModel";
 
 export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind })
 
-  // Replaces V1's `.argsValid`. The three conditions are the same; expressing
-  // them as throws puts the reason in the UI instead of a silent disabled Run.
-  // No `.prerunArgs`: the block has no prerun template, and nothing thrown on
-  // here comes from one, so the args -> prerunArgs fallback has nothing to
-  // deadlock.
+  // The run gate. Throwing surfaces the reason in the UI, which a disabled Run
+  // button would not. There is no `.prerunArgs`: the block has no prerun
+  // template, so nothing gated here depends on a prerun output.
   .args<BlockArgs>((data): BlockArgs => {
     if (data.inputRef === undefined) throw new Error("Input dataset is required");
     if (data.selectedChainRefs.length === 0) throw new Error("Select at least one chain");
