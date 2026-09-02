@@ -67,8 +67,24 @@ function parseInitializationParams(value: unknown): BlockParams {
   if (customBlockLabel !== undefined && typeof customBlockLabel !== "string") {
     throw new Error("'customBlockLabel' must be a string.");
   }
-  if (mem !== undefined && typeof mem !== "number") throw new Error("'mem' must be a number.");
-  if (cpu !== undefined && typeof cpu !== "number") throw new Error("'cpu' must be a number.");
+  // The bounds are the ones the UI's own number fields enforce -- memory 1-1012
+  // GiB, CPU 1-128 cores, integer steps -- so the editor cannot produce a value
+  // outside them and this check leaves the parser exactly as strict as the
+  // editor. A template is the only way an out-of-range value can arrive, and
+  // the workflow forwards mem and cpu straight to resource scheduling, so
+  // refusing it here fails the template instead of the run it would start.
+  if (
+    mem !== undefined &&
+    (typeof mem !== "number" || !Number.isInteger(mem) || mem < 1 || mem > 1012)
+  ) {
+    throw new Error("'mem' must be an integer between 1 and 1012 (GiB).");
+  }
+  if (
+    cpu !== undefined &&
+    (typeof cpu !== "number" || !Number.isInteger(cpu) || cpu < 1 || cpu > 128)
+  ) {
+    throw new Error("'cpu' must be an integer between 1 and 128 (cores).");
+  }
 
   return {
     inputRef,
