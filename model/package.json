@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@milaboratories/strings": "catalog:",
+    "@platforma-open/milaboratories.redefine-clonotypes.kind": "workspace:*",
     "@platforma-sdk/model": "catalog:"
   },
   "devDependencies": {
