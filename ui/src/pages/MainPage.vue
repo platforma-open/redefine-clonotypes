@@ -24,14 +24,14 @@ const anarciLogOpen = ref(false);
 // Block is valid when a run, at least one chain, and at least one definition column are selected
 const isValid = computed(
   () =>
-    app.model.args.inputRef !== undefined &&
-    app.model.args.selectedChainRefs.length > 0 &&
-    (app.model.args.clonotypeDefinition?.length ?? 0) > 0,
+    app.model.data.inputRef !== undefined &&
+    app.model.data.selectedChainRefs.length > 0 &&
+    (app.model.data.clonotypeDefinition?.length ?? 0) > 0,
 );
 
 const numberingAvailable = computed(() => app.model.outputs.numberingAvailable === true);
 const numberingDisabled = computed(
-  () => app.model.args.selectedChainRefs.length === 0 || !numberingAvailable.value,
+  () => app.model.data.selectedChainRefs.length === 0 || !numberingAvailable.value,
 );
 
 // Show chain selector only when the selected run has multiple chains (e.g., single-cell with IG + TCR)
@@ -45,8 +45,8 @@ const numberingSchemeOptions = [
 
 // Reset numbering scheme when run is cleared or numbering becomes unavailable
 watchEffect(() => {
-  if (app.model.args.inputRef === undefined || app.model.outputs.numberingAvailable === false) {
-    app.model.args.numberingScheme = undefined;
+  if (app.model.data.inputRef === undefined || app.model.outputs.numberingAvailable === false) {
+    app.model.data.numberingScheme = undefined;
   }
 });
 
@@ -66,8 +66,8 @@ watch(
   () => {
     const options = app.model.outputs.chainOptions;
     if (!options || options.length === 0) return;
-    if (app.model.args.selectedChainRefs.length === 0) {
-      app.model.args.selectedChainRefs = options.map((opt) => opt.value);
+    if (app.model.data.selectedChainRefs.length === 0) {
+      app.model.data.selectedChainRefs = options.map((opt) => opt.value);
     }
   },
   { immediate: true },
@@ -75,10 +75,10 @@ watch(
 
 // Clear dependent args when the user switches to a different VDJ dataset
 function setMixcrRun(newRef: PlRef | undefined) {
-  app.model.args.inputRef = newRef;
-  app.model.args.selectedChainRefs = [];
-  app.model.args.numberingScheme = undefined;
-  app.model.args.clonotypeDefinition = [];
+  app.model.data.inputRef = newRef;
+  app.model.data.selectedChainRefs = [];
+  app.model.data.numberingScheme = undefined;
+  app.model.data.clonotypeDefinition = [];
 }
 
 // Chain labels from the workflow that produced the last results.
@@ -94,14 +94,14 @@ watch(
   () => app.model.outputs.perChainStats,
   (stats) => {
     if (stats && stats.length > 0) {
-      resultsRunRef.value = JSON.stringify(app.model.args.inputRef);
+      resultsRunRef.value = JSON.stringify(app.model.data.inputRef);
     }
   },
   { immediate: true },
 );
 const resultsMatchCurrentArgs = computed(() => {
   if (!resultsRunRef.value) return false;
-  return resultsRunRef.value === JSON.stringify(app.model.args.inputRef);
+  return resultsRunRef.value === JSON.stringify(app.model.data.inputRef);
 });
 
 // True if at least one non-empty chain produced an ANARCI log
@@ -161,13 +161,13 @@ function numberingWarningForChain(ns: { total: number; numbered: number } | unde
 
 <template>
   <PlBlockPage
-    v-model:subtitle="app.model.args.customBlockLabel"
-    :subtitle-placeholder="app.model.args.defaultBlockLabel"
+    v-model:subtitle="app.model.data.customBlockLabel"
+    :subtitle-placeholder="app.model.data.defaultBlockLabel"
     title="Redefine Clonotypes"
   >
     <!-- Input selection: VDJ dataset → chains → definition columns -->
     <PlDropdownRef
-      v-model="app.model.args.inputRef"
+      v-model="app.model.data.inputRef"
       label="VDJ dataset"
       :options="app.model.outputs.inputOptions"
       @update:model-value="setMixcrRun"
@@ -176,17 +176,17 @@ function numberingWarningForChain(ns: { total: number; numbered: number } | unde
     <!-- Only shown when multiple chains available (single-cell with multiple receptor types) -->
     <PlDropdownMulti
       v-if="showChainSelector"
-      v-model="app.model.args.selectedChainRefs"
+      v-model="app.model.data.selectedChainRefs"
       label="Select Chains"
       :options="app.model.outputs.chainOptions"
-      :disabled="!app.model.args.inputRef"
+      :disabled="!app.model.data.inputRef"
     />
 
     <PlDropdownMulti
-      v-model="app.model.args.clonotypeDefinition"
+      v-model="app.model.data.clonotypeDefinition"
       label="New clonotype definition"
       :options="app.model.outputs.clonotypeDefinitionOptions"
-      :disabled="app.model.args.selectedChainRefs.length === 0"
+      :disabled="app.model.data.selectedChainRefs.length === 0"
     >
       <template v-if="showChainSelector" #tooltip>
         In single-cell data, both chains (A and B) will be redefined using the same selected
@@ -196,7 +196,7 @@ function numberingWarningForChain(ns: { total: number; numbered: number } | unde
     <PlAccordionSection label="Advanced Settings">
       <PlDropdown
         v-if="numberingAvailable"
-        v-model="app.model.args.numberingScheme"
+        v-model="app.model.data.numberingScheme"
         label="Numbering schema"
         placeholder="None"
         :options="numberingSchemeOptions"
@@ -212,7 +212,7 @@ function numberingWarningForChain(ns: { total: number; numbered: number } | unde
 
       <PlSectionSeparator>Resource Allocation</PlSectionSeparator>
       <PlNumberField
-        v-model="app.model.args.mem"
+        v-model="app.model.data.mem"
         label="Memory (GiB)"
         :minValue="1"
         :step="1"
@@ -222,7 +222,7 @@ function numberingWarningForChain(ns: { total: number; numbered: number } | unde
       </PlNumberField>
 
       <PlNumberField
-        v-model="app.model.args.cpu"
+        v-model="app.model.data.cpu"
         label="CPU (cores)"
         :minValue="1"
         :step="1"
@@ -271,7 +271,7 @@ function numberingWarningForChain(ns: { total: number; numbered: number } | unde
           <!-- ANARCI numbering: show count of successfully numbered clonotypes -->
           <p
             v-if="
-              app.model.args.numberingScheme !== undefined &&
+              app.model.data.numberingScheme !== undefined &&
               app.model.outputs.perChainNumberingMethod?.[chainIdx] === 'anarci'
             "
           >
@@ -284,7 +284,7 @@ function numberingWarningForChain(ns: { total: number; numbered: number } | unde
           <!-- CDR3 numbering: all clonotypes are "numbered" (trimming only, no alignment) -->
           <p
             v-else-if="
-              app.model.args.numberingScheme !== undefined &&
+              app.model.data.numberingScheme !== undefined &&
               app.model.outputs.perChainNumberingMethod?.[chainIdx] === 'cdr3'
             "
           >

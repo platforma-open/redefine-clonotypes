@@ -1,7 +1,9 @@
 import strings from "@milaboratories/strings";
-import type { InferOutputsType, PlRef, SUniversalPColumnId } from "@platforma-sdk/model";
-import { BlockModel } from "@platforma-sdk/model";
-import { getDefaultBlockLabel } from "./label";
+import type { InferOutputsType } from "@platforma-sdk/model";
+import { BlockModelV3 } from "@platforma-sdk/model";
+import { kind } from "@platforma-open/milaboratories.redefine-clonotypes.kind";
+import { blockDataModel } from "./dataModel";
+import type { BlockArgs } from "./types";
 
 /** Parses the numbering_stats.tsv produced by the anarci-numbering software.
  *  Returns how many clonotypes existed vs how many ANARCI could number,
@@ -42,32 +44,36 @@ function parseNumberingStats(tsv: string | undefined):
   return { total, numbered: Math.max(numberedH, numberedKL), unnumberedSamples };
 }
 
-export type BlockArgs = {
-  defaultBlockLabel: string;
-  customBlockLabel: string;
-  inputRef?: PlRef;
-  selectedChainRefs: PlRef[];
-  clonotypeDefinition: SUniversalPColumnId[];
-  numberingScheme?: "imgt" | "kabat" | "chothia";
-  mem?: number;
-  cpu?: number;
-};
+export type { BlockArgs, BlockData, LegacyBlockArgs } from "./types";
+export { blockDataModel } from "./dataModel";
 
-export const platforma = BlockModel.create()
+export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind })
 
-  .withArgs<BlockArgs>({
-    defaultBlockLabel: getDefaultBlockLabel({ clonotypeDefinitionLabels: [] }),
-    customBlockLabel: "",
-    selectedChainRefs: [],
-    clonotypeDefinition: [],
+  // Replaces V1's `.argsValid`. The three conditions are the same; expressing
+  // them as throws puts the reason in the UI instead of a silent disabled Run.
+  // No `.prerunArgs`: the block has no prerun template, and nothing thrown on
+  // here comes from one, so the args -> prerunArgs fallback has nothing to
+  // deadlock.
+  .args<BlockArgs>((data): BlockArgs => {
+    if (data.inputRef === undefined) throw new Error("Input dataset is required");
+    if (data.selectedChainRefs.length === 0) throw new Error("Select at least one chain");
+    if (data.clonotypeDefinition.length === 0) throw new Error("Clonotype definition is required");
+    return data;
   })
 
-  .argsValid(
-    (ctx) =>
-      ctx.args.inputRef !== undefined &&
-      ctx.args.selectedChainRefs.length > 0 &&
-      (ctx.args.clonotypeDefinition?.length ?? 0) > 0,
-  )
+  // Inverse of the kind's init-params contract: every field a user sets by
+  // hand. `defaultBlockLabel` is derived by a watchEffect in ui/src/app.ts, so
+  // it is projected into args (the workflow reads it for the trace) but never
+  // templated.
+  .templateParams((data) => ({
+    inputRef: data.inputRef,
+    selectedChainRefs: data.selectedChainRefs,
+    clonotypeDefinition: data.clonotypeDefinition,
+    numberingScheme: data.numberingScheme,
+    customBlockLabel: data.customBlockLabel,
+    mem: data.mem,
+    cpu: data.cpu,
+  }))
 
   .output("inputOptions", (ctx) => {
     // Discover clonotyping runs by finding anchor columns with clonotypingRunId.
@@ -147,7 +153,7 @@ export const platforma = BlockModel.create()
   })
 
   .output("chainOptions", (ctx) => {
-    const run = ctx.args.inputRef;
+    const run = ctx.data.inputRef;
     if (run === undefined) return undefined;
 
     // Extract clonotypingRunId from the selected anchor column's clonotypeKey axis
@@ -195,7 +201,7 @@ export const platforma = BlockModel.create()
 
   .output("clonotypeDefinitionOptions", (ctx) => {
     // Use the first selected chain as reference for options
-    const anchor = ctx.args.selectedChainRefs[0];
+    const anchor = ctx.data.selectedChainRefs[0];
     if (anchor === undefined) return undefined;
 
     const isSingleCell =
@@ -238,7 +244,7 @@ export const platforma = BlockModel.create()
   .output(
     "numberingAvailable",
     (ctx) => {
-      const anchor = ctx.args.selectedChainRefs[0];
+      const anchor = ctx.data.selectedChainRefs[0];
       if (anchor === undefined) return false;
 
       const anchorSpec = ctx.resultPool.getPColumnSpecByRef(anchor);
@@ -385,7 +391,7 @@ export const platforma = BlockModel.create()
   })
 
   .output("perChainNumberingStats", (ctx) => {
-    if (!ctx.args.numberingScheme) return undefined;
+    if (!ctx.data.numberingScheme) return undefined;
     const n = Number(
       ctx.outputs
         ?.resolve({ field: "nChains", assertFieldType: "Input", allowPermanentAbsence: true })
@@ -423,7 +429,7 @@ export const platforma = BlockModel.create()
   })
 
   .output("perChainNumberingMethod", (ctx) => {
-    if (!ctx.args.numberingScheme) return undefined;
+    if (!ctx.data.numberingScheme) return undefined;
     const n = Number(
       ctx.outputs
         ?.resolve({ field: "nChains", assertFieldType: "Input", allowPermanentAbsence: true })
@@ -445,11 +451,11 @@ export const platforma = BlockModel.create()
 
   .title(() => "Redefine Clonotypes")
 
-  .subtitle((ctx) => ctx.args.customBlockLabel || ctx.args.defaultBlockLabel)
+  .subtitle((ctx) => ctx.data.customBlockLabel || ctx.data.defaultBlockLabel)
 
   .sections((_ctx) => [{ type: "link", href: "/", label: strings.titles.main }])
 
-  .done(2);
+  .done();
 
 export type BlockOutputs = InferOutputsType<typeof platforma>;
 
