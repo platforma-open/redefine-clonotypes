@@ -1,6 +1,11 @@
 import { assertParamsObject, defineBlockKind } from "@platforma-sdk/block-kind";
 import type { ColumnUniversalId, PlRef } from "@platforma-sdk/model";
-import { isColumnUniversalId, isPlRef } from "@platforma-sdk/model";
+import {
+  isAnchoredPColumnId,
+  isColumnUniversalId,
+  isPlRef,
+  parseJsonSafely,
+} from "@platforma-sdk/model";
 import { name, version } from "../package.json" with { type: "json" };
 
 /** The residue-numbering schemes the block can apply. */
@@ -56,7 +61,7 @@ function parseInitializationParams(value: unknown): BlockParams {
     }
   }
   if (clonotypeDefinition !== undefined) {
-    if (!Array.isArray(clonotypeDefinition) || !clonotypeDefinition.every(isColumnUniversalId)) {
+    if (!Array.isArray(clonotypeDefinition) || !clonotypeDefinition.every(isColumnId)) {
       throw new Error("'clonotypeDefinition' must be an array of column ids.");
     }
   }
@@ -91,6 +96,19 @@ function parseInitializationParams(value: unknown): BlockParams {
     mem,
     cpu,
   };
+}
+
+/**
+ * A column identifier as this block stores it: a canonically serialized JSON key.
+ * `isColumnUniversalId` covers the key forms the SDK's id encoding uses, but every
+ * column id here comes from `resultPool.getCanonicalOptions`, which mints an
+ * *anchored* key -- a shape none of those recognizes even though the SDK types it
+ * `ColumnUniversalId`. Both forms are accepted, or the kind would refuse the ids the
+ * block itself writes into a template.
+ */
+function isColumnId(value: unknown): value is ColumnUniversalId {
+  if (typeof value !== "string") return false;
+  return isColumnUniversalId(value) || isAnchoredPColumnId(parseJsonSafely(value));
 }
 
 // Identity (`name`/`version`) comes from this package's own `package.json`, so
