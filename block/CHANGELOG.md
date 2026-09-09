@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.redefine-clonotypes
 
+## 1.8.0
+
+### Minor Changes
+
+- adc1f4a: Add an optional "Keep top clonotypes" setting: keep only the N redefined clonotypes with the highest total abundance, ranked by the primary abundance column summed across samples. The cut runs on the merged keys, so the retained count is exactly N whenever that many redefined clonotypes exist. Abundance fractions stay relative to the whole sample rather than to the retained subset, and the results panel reports the retained count whenever the cut removed anything. Leaving the field empty keeps every clonotype, so existing projects are unaffected.
+
 ## 1.7.2
 
 ### Patch Changes
