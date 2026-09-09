@@ -31,6 +31,7 @@ export type BlockParams = {
   selectedChainRefs?: PlRef[];
   clonotypeDefinition?: ColumnUniversalId[];
   numberingScheme?: NumberingScheme;
+  topClonotypes?: number;
   customBlockLabel?: string;
   mem?: number;
   cpu?: number;
@@ -45,6 +46,7 @@ function parseInitializationParams(value: unknown): BlockParams {
     selectedChainRefs,
     clonotypeDefinition,
     numberingScheme,
+    topClonotypes,
     customBlockLabel,
     mem,
     cpu,
@@ -67,6 +69,14 @@ function parseInitializationParams(value: unknown): BlockParams {
   }
   if (numberingScheme !== undefined && !NUMBERING_SCHEMES.includes(numberingScheme as string)) {
     throw new Error(`'numberingScheme' must be one of: ${NUMBERING_SCHEMES.join(", ")}.`);
+  }
+  // Absent means "keep every redefined clonotype"; a count of at least 2 is the
+  // smallest cut that leaves a ranking to speak of.
+  if (
+    topClonotypes !== undefined &&
+    (typeof topClonotypes !== "number" || !Number.isInteger(topClonotypes) || topClonotypes < 2)
+  ) {
+    throw new Error("'topClonotypes' must be an integer of 2 or more.");
   }
   if (customBlockLabel !== undefined && typeof customBlockLabel !== "string") {
     throw new Error("'customBlockLabel' must be a string.");
@@ -92,6 +102,7 @@ function parseInitializationParams(value: unknown): BlockParams {
     selectedChainRefs: selectedChainRefs as PlRef[] | undefined,
     clonotypeDefinition: clonotypeDefinition as ColumnUniversalId[] | undefined,
     numberingScheme: numberingScheme as NumberingScheme | undefined,
+    topClonotypes,
     customBlockLabel,
     mem,
     cpu,

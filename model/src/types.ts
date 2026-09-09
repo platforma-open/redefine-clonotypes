@@ -19,6 +19,9 @@ export type BlockData = {
   selectedChainRefs: PlRef[];
   clonotypeDefinition: ColumnUniversalId[];
   numberingScheme?: NumberingScheme;
+  /** Keep only the N redefined clonotypes with the highest total primary
+   *  abundance. Absent means keep every one of them. */
+  topClonotypes?: number;
   mem?: number;
   cpu?: number;
 };

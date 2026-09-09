@@ -892,13 +892,7 @@ self.body(func(inputs) {
 			alias("newClonotypeKey")
 		)
 
-		// 3. Calculate stats — nClonotypesBefore from unfiltered df,
-		// nClonotypesAfter from -> filtered + redefined df.
-		nClonotypesAfter := dfWithNewKeyStr.select(pt.col("newClonotypeKey").nUnique().alias("nClonotypesAfter"))
-		statsDf := nClonotypesBefore.join(nClonotypesAfter, {how: "cross"})
-		statsDf.saveContent("stats.tsv")
-
-		// 4. Aggregate abundances under new clonotype keys.
+		// 3. Aggregate abundances under new clonotype keys.
 		// Sum abundances per sample × new key. Keep the old clonotypeKey of the
 		// most-abundant member as representative (for property lookup later).
 		abundanceAggs := []
@@ -908,7 +902,31 @@ self.body(func(inputs) {
 		abundanceAggs = append(abundanceAggs, pt.col("clonotypeKey").maxBy(pt.col(mainAbundanceHeader)).alias("clonotypeKey"))
 		df_abundances := dfWithNewKeyStr.groupBy("sampleId", "newClonotypeKey").agg(abundanceAggs...)
 
-		// 5. Per-sample normalization (fraction of total)
+		// 4. Top-N selection.
+		// The primary abundance column is per (sample, clonotype), so it is
+		// collapsed by summing over samples, which keeps this ranking consistent
+		// with the "Supporting Reads"/"Supporting UMIs" values the block reports.
+		if !is_undefined(args.topClonotypes) {
+			topKeys := df_abundances.
+				groupBy("newClonotypeKey").
+				agg(pt.col(mainAbundanceHeader).sum().alias("topAbundance")).
+				sort(["topAbundance", "newClonotypeKey"], {descending: [true, false]}).
+				limit(args.topClonotypes).
+				select(pt.col("newClonotypeKey"))
+			df_abundances = df_abundances.join(topKeys, {on: "newClonotypeKey", how: "inner"})
+		}
+
+		// 5. Calculate stats — nClonotypesBefore from the unfiltered df,
+		// nClonotypesAfter from -> filtered + redefined df, nClonotypesRetained
+		// from the same df after the top-N cut.
+		nClonotypesAfter := dfWithNewKeyStr.select(pt.col("newClonotypeKey").nUnique().alias("nClonotypesAfter"))
+		nClonotypesRetained := df_abundances.select(pt.col("newClonotypeKey").nUnique().alias("nClonotypesRetained"))
+		statsDf := nClonotypesBefore.join(nClonotypesAfter, {how: "cross"}).join(nClonotypesRetained, {how: "cross"})
+		statsDf.saveContent("stats.tsv")
+
+		// 6. Per-sample normalization (fraction of total).
+		// sampleTotalsDf comes from the pre-filter, pre-cut df, so fractions stay
+		// relative to the whole sample rather than to the retained subset.
 		df_abundances = df_abundances.join(sampleTotalsDf, {on: "sampleId", how: "left"})
 
 		normExpressions := []
@@ -920,7 +938,7 @@ self.body(func(inputs) {
 		df_abundances = df_abundances.withColumns(normExpressions...)
 		df_abundances.save("abundances.tsv")
 
-		// 6. Aggregate properties — pick representative from most-abundant old clonotype
+		// 7. Aggregate properties — pick representative from most-abundant old clonotype
 		df_properties := df_abundances.join(ptWf.frame(propertiesTsv, {xsvType: "tsv"}), {on: "clonotypeKey", how: "left"})
 		if numberingDf != undefined {
 			df_properties = df_properties.join(numberingDf, {on: "clonotypeKey", how: "left"})
@@ -1012,8 +1030,9 @@ self.body(func(inputs) {
 		// This relies on df_properties holding exactly one row per
 		// (sampleId, newClonotypeKey): guaranteed by the df_abundances groupBy, and
 		// preserved by the property / numbering / cdr3 joins because each of those
-		// frames is keyed on clonotypeKey alone. A join that fans rows out would
-		// silently inflate the sums below.
+		// frames is keyed on clonotypeKey alone, and by the top-N join because
+		// topKeys is a groupBy output and so unique on newClonotypeKey. A join that
+		// fans rows out would silently inflate the sums below.
 		abundanceHeaderByUnit := {}
 		for i, col in abundanceCols {
 			unit := col.spec.annotations["pl7.app/abundance/unit"]
@@ -1133,7 +1152,9 @@ self.body(func(inputs) {
 		aggregatedDf := df_properties.groupBy("newClonotypeKey").agg(aggExpressions...)
 
 		// Convergence metric: how many distinct original clonotypes were merged into each new key.
-		// Computed from dfWithNewKeyStr (post numbering-filter) so totals match nClonotypesAfter.
+		// Computed from dfWithNewKeyStr, i.e. post numbering-filter but pre top-N cut, so each
+		// key's count is its full merge size. Joined onto the already-cut aggregatedDf, so only
+		// retained keys survive and the per-key values are unaffected by the cut.
 		sourceCountDf := dfWithNewKeyStr.
 			groupBy("newClonotypeKey").
 			agg(pt.col("clonotypeKey").nUnique().alias("redefineSourceCount"))
