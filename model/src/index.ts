@@ -56,6 +56,11 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
     if (data.inputRef === undefined) throw new Error("Input dataset is required");
     if (data.selectedChainRefs.length === 0) throw new Error("Select at least one chain");
     if (data.clonotypeDefinition.length === 0) throw new Error("Clonotype definition is required");
+    if (
+      data.topClonotypes !== undefined &&
+      (!Number.isInteger(data.topClonotypes) || data.topClonotypes < 2)
+    )
+      throw new Error("Number of top clonotypes must be 2 or more");
     return data;
   })
 
@@ -68,6 +73,7 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
     selectedChainRefs: data.selectedChainRefs,
     clonotypeDefinition: data.clonotypeDefinition,
     numberingScheme: data.numberingScheme,
+    topClonotypes: data.topClonotypes,
     customBlockLabel: data.customBlockLabel,
     mem: data.mem,
     cpu: data.cpu,
@@ -381,9 +387,13 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
       const beforeIndex = headers.indexOf("nClonotypesBefore");
       const afterIndex = headers.indexOf("nClonotypesAfter");
       if (beforeIndex === -1 || afterIndex === -1) return undefined;
+      // Written by every run: equal to nClonotypesAfter when no top-N cut applied.
+      const retainedIndex = headers.indexOf("nClonotypesRetained");
+      const retained = retainedIndex !== -1 ? parseInt(values[retainedIndex], 10) : NaN;
       return {
         nClonotypesBefore: parseInt(values[beforeIndex], 10),
         nClonotypesAfter: parseInt(values[afterIndex], 10),
+        nClonotypesRetained: Number.isNaN(retained) ? undefined : retained,
       };
     });
   })

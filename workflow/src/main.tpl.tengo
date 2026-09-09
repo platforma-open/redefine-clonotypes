@@ -110,6 +110,7 @@ wf.body(func(args) {
 		selectedChainRefs: args.selectedChainRefs,
 		clonotypeDefinition: args.clonotypeDefinition,
 		numberingScheme: args.numberingScheme,
+		topClonotypes: args.topClonotypes,
 		customBlockLabel: args.customBlockLabel,
 		defaultBlockLabel: args.defaultBlockLabel,
 		mem: args.mem,

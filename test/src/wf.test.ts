@@ -17,11 +17,17 @@ async function setupUpstreamPipeline(project: any, helpers: any, expect: any) {
   const clonotypingBlockId = await project.addBlock("MiXCR Clonotyping", clonotypingBlockSpec);
 
   const sample1Id = uniquePlId();
+  const sample2Id = uniquePlId();
+  const sample3Id = uniquePlId();
   const metaColumn1Id = uniquePlId();
   const dataset1Id = uniquePlId();
 
   const r1Handle = await helpers.getLocalFileHandle("./assets/SRR11233652_sampledBulk_R1.fastq.gz");
   const r2Handle = await helpers.getLocalFileHandle("./assets/SRR11233652_sampledBulk_R2.fastq.gz");
+  const s663R1 = await helpers.getLocalFileHandle("./assets/SRR11233663_sampledBulk_R1.fastq.gz");
+  const s663R2 = await helpers.getLocalFileHandle("./assets/SRR11233663_sampledBulk_R2.fastq.gz");
+  const s664R1 = await helpers.getLocalFileHandle("./assets/SRR11233664_sampledBulk_R1.fastq.gz");
+  const s664R2 = await helpers.getLocalFileHandle("./assets/SRR11233664_sampledBulk_R2.fastq.gz");
 
   await project.setBlockArgs(sndBlockId, {
     metadata: [
@@ -30,12 +36,16 @@ async function setupUpstreamPipeline(project: any, helpers: any, expect: any) {
         label: "MetaColumn1",
         global: false,
         valueType: "Long",
-        data: { [sample1Id]: 2345 },
+        data: { [sample1Id]: 2345, [sample2Id]: 3456, [sample3Id]: 4567 },
       },
     ],
-    sampleIds: [sample1Id],
+    sampleIds: [sample1Id, sample2Id, sample3Id],
     sampleLabelColumnLabel: "Sample Name",
-    sampleLabels: { [sample1Id]: "Sample 1" },
+    sampleLabels: {
+      [sample1Id]: "SRR11233652",
+      [sample2Id]: "SRR11233663",
+      [sample3Id]: "SRR11233664",
+    },
     datasets: [
       {
         id: dataset1Id,
@@ -46,6 +56,8 @@ async function setupUpstreamPipeline(project: any, helpers: any, expect: any) {
           gzipped: true,
           data: {
             [sample1Id]: { R1: r1Handle, R2: r2Handle },
+            [sample2Id]: { R1: s663R1, R2: s663R2 },
+            [sample3Id]: { R1: s664R1, R2: s664R2 },
           },
         },
       },
@@ -57,7 +69,14 @@ async function setupUpstreamPipeline(project: any, helpers: any, expect: any) {
   expect(sndStableState.outputs).toMatchObject({
     fileImports: {
       ok: true,
-      value: { [r1Handle]: { done: true }, [r2Handle]: { done: true } },
+      value: {
+        [r1Handle]: { done: true },
+        [r2Handle]: { done: true },
+        [s663R1]: { done: true },
+        [s663R2]: { done: true },
+        [s664R1]: { done: true },
+        [s664R2]: { done: true },
+      },
     },
   });
 
@@ -253,5 +272,102 @@ blockTest(
     const stats = finalOutputs.perChainStats?.value?.[0];
     expect(stats.nClonotypesBefore).toBeGreaterThan(0);
     expect(stats.nClonotypesAfter).toBeGreaterThan(0);
+  },
+);
+
+// Exercises the cut
+blockTest(
+  "top-N selection keeps exactly N redefined clonotypes",
+  { timeout: 900000 },
+  async ({ rawPrj: project, helpers, expect }) => {
+    await setupUpstreamPipeline(project, helpers, expect);
+
+    const redefineBlockId = await project.addBlock("Redefine Clonotypes", redefineBlockSpec);
+
+    // Step 1: Wait for run options
+    const redefineState1 = await awaitStableState(project.getBlockState(redefineBlockId), 60000);
+    const runOpts = (redefineState1.outputs as Record<string, any>).inputOptions?.value ?? [];
+    expect(runOpts.length).toBeGreaterThan(0);
+    const inputRef = runOpts[0].ref;
+
+    // Step 2: Select run, wait for chain options
+    await project.mutateBlockStorage(redefineBlockId, {
+      operation: "update-block-data",
+      value: {
+        defaultBlockLabel: "",
+        customBlockLabel: "",
+        inputRef,
+        selectedChainRefs: [],
+        clonotypeDefinition: [],
+      } satisfies BlockData,
+    });
+
+    const redefineState2 = await awaitStableState(project.getBlockState(redefineBlockId), 60000);
+    const chainOpts = (redefineState2.outputs as Record<string, any>).chainOptions?.value ?? [];
+    expect(chainOpts.length).toBeGreaterThan(0);
+    const selectedChainRefs = chainOpts.map((o: any) => o.value);
+
+    // Step 3: Select chains, wait for definition options
+    await project.mutateBlockStorage(redefineBlockId, {
+      operation: "update-block-data",
+      value: {
+        defaultBlockLabel: "",
+        customBlockLabel: "",
+        inputRef,
+        selectedChainRefs,
+        clonotypeDefinition: [],
+      } satisfies BlockData,
+    });
+
+    const redefineState3 = await awaitStableState(project.getBlockState(redefineBlockId), 60000);
+    const defOpts =
+      (redefineState3.outputs as Record<string, any>).clonotypeDefinitionOptions?.value ?? [];
+    expect(defOpts.length).toBeGreaterThan(0);
+
+    // Step 4: Redefine with no cut, to establish the baseline the cut is measured against.
+    const cdr3AaOpt = defOpts.find((o: any) => o.label?.includes("CDR3 aa"));
+    const selectedDef = cdr3AaOpt ?? defOpts[0];
+    const baseData = {
+      defaultBlockLabel: "",
+      customBlockLabel: "",
+      inputRef,
+      selectedChainRefs,
+      clonotypeDefinition: [selectedDef.value],
+    } satisfies BlockData;
+
+    await project.mutateBlockStorage(redefineBlockId, {
+      operation: "update-block-data",
+      value: baseData,
+    });
+    await project.runBlock(redefineBlockId);
+    const uncutState = await helpers.awaitBlockDoneAndGetStableBlockState(redefineBlockId, 300000);
+    const uncutOutputs = uncutState.outputs as Record<string, any>;
+    expect(uncutOutputs.perChainStats?.ok).toBe(true);
+    const uncutStats = uncutOutputs.perChainStats?.value?.[0];
+
+    // The definition has to actually merge, or the cut below proves nothing.
+    expect(uncutStats.nClonotypesBefore).toBeGreaterThan(uncutStats.nClonotypesAfter);
+    // Enough redefined clonotypes left that a top-2 request drops at least one.
+    expect(uncutStats.nClonotypesAfter).toBeGreaterThan(2);
+    // No cut requested, so every redefined clonotype is retained.
+    expect(uncutStats.nClonotypesRetained).toEqual(uncutStats.nClonotypesAfter);
+
+    // Step 5: Same definition, now keeping only the top 2 by total primary abundance.
+    const topClonotypes = 2;
+    await project.mutateBlockStorage(redefineBlockId, {
+      operation: "update-block-data",
+      value: { ...baseData, topClonotypes } satisfies BlockData,
+    });
+    await project.runBlock(redefineBlockId);
+    const cutState = await helpers.awaitBlockDoneAndGetStableBlockState(redefineBlockId, 300000);
+    const cutOutputs = cutState.outputs as Record<string, any>;
+    expect(cutOutputs.perChainStats?.ok).toBe(true);
+    const cutStats = cutOutputs.perChainStats?.value?.[0];
+
+    // The cut runs on the merged keys, so exactly N survive...
+    expect(cutStats.nClonotypesRetained).toEqual(topClonotypes);
+    // ...and it is the cut doing the work, not a different redefinition.
+    expect(cutStats.nClonotypesAfter).toEqual(uncutStats.nClonotypesAfter);
+    expect(cutStats.nClonotypesBefore).toEqual(uncutStats.nClonotypesBefore);
   },
 );

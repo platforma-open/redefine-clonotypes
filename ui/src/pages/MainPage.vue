@@ -21,12 +21,24 @@ import { useApp } from "../app";
 const app = useApp();
 const anarciLogOpen = ref(false);
 
-// Block is valid when a run, at least one chain, and at least one definition column are selected
+// Mirrors the model's run gate, so the reason shows on the field rather than only
+// on Run.
+const topClonotypesError = computed(() => {
+  const n = app.model.data.topClonotypes;
+  if (n === undefined) return undefined;
+  if (!Number.isInteger(n)) return "Value must be a whole number";
+  if (n < 2) return "Value must be 2 or more";
+  return undefined;
+});
+
+// Block is valid when a run, at least one chain, and at least one definition column
+// are selected, and every field-level value passes its own check
 const isValid = computed(
   () =>
     app.model.data.inputRef !== undefined &&
     app.model.data.selectedChainRefs.length > 0 &&
-    (app.model.data.clonotypeDefinition?.length ?? 0) > 0,
+    (app.model.data.clonotypeDefinition?.length ?? 0) > 0 &&
+    topClonotypesError.value === undefined,
 );
 
 const numberingAvailable = computed(() => app.model.outputs.numberingAvailable === true);
@@ -146,6 +158,14 @@ const activeAnarciNumberingStats = computed(
   () => app.model.outputs.perChainNumberingStats?.[activeAnarciLogIdx.value],
 );
 
+// True when the top-N cut actually removed clonotypes from this chain's output.
+function wasCut(
+  stats: { nClonotypesAfter: number; nClonotypesRetained?: number } | undefined,
+): boolean {
+  if (!stats || stats.nClonotypesRetained === undefined) return false;
+  return stats.nClonotypesRetained < stats.nClonotypesAfter;
+}
+
 // Per-chain numbering warning message. Warns when ANARCI couldn't number many clonotypes.
 function numberingWarningForChain(ns: { total: number; numbered: number } | undefined) {
   if (!ns) return undefined;
@@ -193,6 +213,23 @@ function numberingWarningForChain(ns: { total: number; numbered: number } | unde
         features.
       </template>
     </PlDropdownMulti>
+
+    <PlNumberField
+      v-model="app.model.data.topClonotypes"
+      label="Keep top clonotypes"
+      placeholder="All"
+      :minValue="2"
+      :step="1"
+      :error-message="topClonotypesError"
+    >
+      <template #tooltip>
+        Keep only this many redefined clonotypes, ranked by their total abundance summed across
+        samples. Leave empty to keep all of them. <br />
+        Abundance fractions are still reported relative to the whole sample, not to the retained
+        subset.
+      </template>
+    </PlNumberField>
+
     <PlAccordionSection label="Advanced Settings">
       <PlDropdown
         v-if="numberingAvailable"
@@ -290,9 +327,20 @@ function numberingWarningForChain(ns: { total: number; numbered: number } | unde
           >
             Successfully numbered based on CDR3
           </p>
+          <!-- "Output" always labels the count actually exported, so it moves to
+               the second line when a cut applied. Equal counts mean fewer
+               clonotypes existed than the requested N, i.e. nothing was cut. -->
           <p>
-            Output clonotypes after redefinition:
+            {{
+              wasCut(stats)
+                ? "Clonotypes after redefinition:"
+                : "Output clonotypes after redefinition:"
+            }}
             {{ stats?.nClonotypesAfter?.toLocaleString() ?? "N/A" }}
+          </p>
+          <p v-if="wasCut(stats)">
+            Output clonotypes after top selection:
+            {{ stats?.nClonotypesRetained?.toLocaleString() ?? "N/A" }}
           </p>
         </template>
       </div>

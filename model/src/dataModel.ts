@@ -25,6 +25,7 @@ export const blockDataModel = new DataModelBuilder({ kind })
     selectedChainRefs: params?.selectedChainRefs ?? [],
     clonotypeDefinition: params?.clonotypeDefinition ?? [],
     numberingScheme: params?.numberingScheme,
+    topClonotypes: params?.topClonotypes,
     mem: params?.mem,
     cpu: params?.cpu,
   }));

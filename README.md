@@ -22,7 +22,7 @@ Region definitions depend on a numbering scheme, so you select IMGT, Kabat, or C
 ## Inputs & outputs
 
 * **Input:** a V(D)J clonotype dataset, plus the set of columns that should define a clonotype and the chains to include.
-* **Output:** a new V(D)J dataset whose clonotypes follow your definition, each represented by its most abundant original member, with all abundance columns recalculated as group sums.
+* **Output:** a new V(D)J dataset whose clonotypes follow your definition, each represented by its most abundant original member, with all abundance columns recalculated as group sums. Optionally only the most abundant N of them.
 
 ## Specifications
 
@@ -34,6 +34,7 @@ Region definitions depend on a numbering scheme, so you select IMGT, Kabat, or C
 | Abundances | Recalculated as the sum across group members, for every abundance column |
 | Numbering schemes | IMGT, Kabat, Chothia — via [ANARCI](https://github.com/oxpig/ANARCI) for assembled domains |
 | Chain selection | Choose which chains to include |
+| Top clonotypes | Optional: keep only the N most abundant redefined clonotypes, per selected chain |
 | Output | A standard V(D)J dataset, usable by any downstream block |
 
 ## Use cases
@@ -57,7 +58,7 @@ No — that is the point. The block re-groups an existing dataset, which is far 
 
 ### How are abundances handled?
 
-Every abundance column is recalculated as the sum over the members of each new group, so a redefined clonotype's abundance is the combined abundance of the original clonotypes that merged into it. Nothing is dropped or double-counted.
+Every abundance column is recalculated as the sum over the members of each new group, so a redefined clonotype's abundance is the combined abundance of the original clonotypes that merged into it. Nothing is double-counted, and nothing is dropped unless you ask for it: setting "Keep top clonotypes" discards everything below the cut. Fractions stay relative to the whole sample either way, so after a cut they no longer sum to 1.
 
 ### Which original clonotype represents each new group?
 
