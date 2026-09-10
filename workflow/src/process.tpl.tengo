@@ -13,6 +13,7 @@ text := import("text")
 slices := import("@platforma-sdk/workflow-tengo:slices")
 maps := import("@platforma-sdk/workflow-tengo:maps")
 xsv := import("@platforma-sdk/workflow-tengo:pframes.xsv")
+pUtil := import("@platforma-sdk/workflow-tengo:pframes.util")
 json := import("json")
 assets := import("@platforma-sdk/workflow-tengo:assets")
 render := import("@platforma-sdk/workflow-tengo:render")
@@ -205,6 +206,26 @@ self.body(func(inputs) {
 		sampleIdAxisSpec := mainAbundanceCol.spec.axesSpec[0]
 		clonotypeKeyAxisSpec := mainAbundanceCol.spec.axesSpec[1]
 		isSingleCell := clonotypeKeyAxisSpec.name == "pl7.app/vdj/scClonotypeKey"
+
+		// The dataset's cell linker, to be re-keyed onto the new clonotype key further down.
+		// Get the cell axis by discarding the already known ones
+		cellLinkerCol := undefined
+		cellIdAxisSpec := undefined
+		if isSingleCell {
+			for _, col in columns.getColumns(anchor + "_cellLinker") {
+				otherAxis := undefined
+				for _, ax in col.spec.axesSpec {
+					if ax.name != sampleIdAxisSpec.name && ax.name != clonotypeKeyAxisSpec.name {
+						otherAxis = ax
+					}
+				}
+				if !is_undefined(otherAxis) {
+					cellLinkerCol = col
+					cellIdAxisSpec = otherAxis
+					break
+				}
+			}
+		}
 
 		clonotypeDefinitionCols := []
 		for i, _ in args.clonotypeDefinition {
@@ -574,6 +595,34 @@ self.body(func(inputs) {
 		}
 		propertiesTsv := propertyTsvBuilder.build()
 
+		// --- Build cell linker TSV ---
+		// Flat (sampleId, cellId, clonotypeKey) rows, one per cell of the run.
+		linkerTsv := undefined
+		if !is_undefined(cellLinkerCol) {
+			// pl7.app/isLinkerColumn is dropped for the export, because a flagged column is fed to
+			// LinkerIndex::try_new, which requires the axes to form exactly two parent-connected components
+			// and refuses this one with three.
+			
+			// Get the main column specs without the "pl7.app/isLinkerColumn" annotation
+			plainLinkerAnnotations := {}
+			maps.forEach(is_undefined(cellLinkerCol.spec.annotations) ? {} : cellLinkerCol.spec.annotations, func(key, value) {
+				if key != "pl7.app/isLinkerColumn" {
+					plainLinkerAnnotations[key] = value
+				}
+			})
+			plainLinkerSpec := maps.clone(cellLinkerCol.spec)
+			plainLinkerSpec.annotations = plainLinkerAnnotations
+
+			linkerTsvBuilder := pframes.tsvFileBuilder()
+			linkerTsvBuilder.mem(exportMem)
+			linkerTsvBuilder.cpu(exportCpu)
+			linkerTsvBuilder.setAxisHeader(sampleIdAxisSpec, "sampleId")
+			linkerTsvBuilder.setAxisHeader(cellIdAxisSpec, "cellId")
+			linkerTsvBuilder.setAxisHeader(clonotypeKeyAxisSpec, "clonotypeKey")
+			linkerTsvBuilder.add({ spec: plainLinkerSpec, data: cellLinkerCol.data }, { header: "linker" })
+			linkerTsv = linkerTsvBuilder.build()
+		}
+
 		// ============================================================
 		// EARLY SPEC CONSTRUCTION
 		// Build all output specs before computation so downstream
@@ -753,6 +802,21 @@ self.body(func(inputs) {
 				}
 			}
 			newPropertyColumns = append(newPropertyColumns, { column: header, spec: newSpec })
+		}
+
+		// --- Cell linker output specs ---
+		linkerAxes := undefined
+		newLinkerColumns := undefined
+		if !is_undefined(cellLinkerCol) {
+			linkerAxes = [
+				{ column: "sampleId", spec: sampleIdAxisSpec },
+				{ column: "cellId", spec: cellIdAxisSpec },
+				{ column: "newClonotypeKey", spec: newClonotypeKeySpec }
+			]
+			// reasign the main column original spec with the "pl7.app/isLinkerColumn" annotation
+			newLinkerSpec := maps.clone(cellLinkerCol.spec)
+			delete(newLinkerSpec, "axesSpec")
+			newLinkerColumns = [{ column: "linker", spec: newLinkerSpec }]
 		}
 
 		// ============================================================
@@ -937,6 +1001,28 @@ self.body(func(inputs) {
 		}
 		df_abundances = df_abundances.withColumns(normExpressions...)
 		df_abundances.save("abundances.tsv")
+
+		// 6b. Re-key the cell linker onto the new clonotype key.
+		//
+		// The mapping is read from dfWithNewKeyStr, BEFORE the aggregation, so every member of a merged
+		// clonotype is carried.
+		if !is_undefined(linkerTsv) {
+			keyMapDf := dfWithNewKeyStr.select(pt.col("clonotypeKey"), pt.col("newClonotypeKey")).unique()
+			retainedKeysDf := df_abundances.select(pt.col("newClonotypeKey")).unique()
+
+			ptWf.frame(linkerTsv, {xsvType: "tsv"}).
+				// Two inner joins, and each one drops cells on purpose: the first drops cells whose clonotype the
+				// numbering filter removed (unnumbered clonotypes never reach dfWithNewKeyStr), the second drops
+				// cells whose new clonotype the top-N cut removed.
+				join(keyMapDf, {on: "clonotypeKey", how: "inner"}).
+				join(retainedKeysDf, {on: "newClonotypeKey", how: "inner"}).
+				// The p-frame is written straight out of this run
+				saveFrameDirect("linkerFrame", {
+					axes: linkerAxes,
+					columns: newLinkerColumns,
+					partitionKeyLength: 1
+				})
+		}
 
 		// 7. Aggregate properties — pick representative from most-abundant old clonotype
 		df_properties := df_abundances.join(ptWf.frame(propertiesTsv, {xsvType: "tsv"}), {on: "clonotypeKey", how: "left"})
@@ -1205,12 +1291,22 @@ self.body(func(inputs) {
 			partitionKeyLength: 0
 		}, { splitDataAndSpec: true, mem: importMem, cpu: importCpu })
 
+		linkerCols := undefined
+		if !is_undefined(linkerTsv) {
+			linkerCols = pUtil.pFrameToColumnsMap(ptResult.getFrameDirect("linkerFrame"))
+		}
+
 		// Add this chain's PColumns to the combined PFrame
 		for k, v in abundancePf {
 			pfBuilder.add(anchor + "/" + k, trace.inject(v.spec), v.data)
 		}
 		for k, v in propertyPf {
 			pfBuilder.add(anchor + "/" + k, trace.inject(v.spec), v.data)
+		}
+		if !is_undefined(linkerCols) {
+			for k, v in linkerCols {
+				pfBuilder.add(anchor + "/" + k, trace.inject(v.spec), v.data)
+			}
 		}
 
 		// --- Collect per chain outputs ---

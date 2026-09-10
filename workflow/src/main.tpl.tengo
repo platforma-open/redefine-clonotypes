@@ -77,6 +77,14 @@ wf.body(func(args) {
 			axes: [{ anchor: anchor, idx: 1 }]
 		}, anchor + "_properties")
 
+		// The single-cell dataset's cell linker, keyed [sampleId, cellId, scClonotypeKey]. Needed so this
+		// block can re-key it onto the clonotype key it invents.
+		bundleBuilder.addMulti({
+			name: "pl7.app/sc/cellLinker",
+			axes: [{ anchor: anchor, idx: 0 }, { anchor: anchor, idx: 1 }],
+			partialAxesMatch: true
+		}, anchor + "_cellLinker")
+
 		// VDJRegion assembling feature sequences (AA/NT)
 		bundleBuilder.addMulti({
 			axes: [{ anchor: anchor, idx: 1 }],
