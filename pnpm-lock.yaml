@@ -37,8 +37,8 @@ catalogs:
       specifier: 4.0.25
       version: 4.0.25
     '@platforma-sdk/test':
-      specifier: 1.83.12
-      version: 1.83.12
+      specifier: 1.83.14
+      version: 1.83.14
     '@platforma-sdk/ui-vue':
       specifier: 1.83.13
       version: 1.83.13
@@ -236,7 +236,7 @@ importers:
         version: 1.4.0
       '@platforma-sdk/test':
         specifier: 'catalog:'
-        version: 1.83.12(@bytecodealliance/preview2-shim@0.17.8)(@types/node@24.5.2)(vite@6.3.5(@types/node@24.5.2)(lightningcss@1.32.0)(yaml@2.8.1))
+        version: 1.83.14(@bytecodealliance/preview2-shim@0.17.8)(@types/node@24.5.2)(vite@6.3.5(@types/node@24.5.2)(lightningcss@1.32.0)(yaml@2.8.1))
       eslint:
         specifier: 'catalog:'
         version: 9.34.0
@@ -295,7 +295,7 @@ importers:
         version: 4.0.25
       '@platforma-sdk/test':
         specifier: 'catalog:'
-        version: 1.83.12(@bytecodealliance/preview2-shim@0.17.8)(@types/node@24.5.2)(vite@8.0.8(@types/node@24.5.2)(yaml@2.8.1))
+        version: 1.83.14(@bytecodealliance/preview2-shim@0.17.8)(@types/node@24.5.2)(vite@8.0.8(@types/node@24.5.2)(yaml@2.8.1))
       shx:
         specifier: 'catalog:'
         version: 0.4.0
@@ -1178,6 +1178,9 @@ packages:
   '@milaboratories/pl-errors@1.4.38':
     resolution: {integrity: sha512-FbHayxNW21FiUZj4U8zbrfYjesybsN8RDXZ51wfkDf8v3PVzisrTYyUcTsjooYIt8erYGjixD+B4nslhjsq3pw==}
 
+  '@milaboratories/pl-flight-recorder@0.2.0':
+    resolution: {integrity: sha512-SRJraGVF+tI3qnZ/y/7ziwumWCfjuNqEdwE/104JA3gPhZm71AwaqvAU1rXPE8dj2oiQKYFwax21Z92LNXU/pw==}
+
   '@milaboratories/pl-healthcheck@1.0.5':
     resolution: {integrity: sha512-ZkQti4VU2FapJBFRtZGfR5NDPXEAEFgTf/NfemypgY0aA75fFPi4/c3BpXX5K7dht+JOgHqkMrBHxKIuE2T+fA==}
     engines: {node: '>=22.19.0'}
@@ -1185,8 +1188,8 @@ packages:
   '@milaboratories/pl-http@1.2.4':
     resolution: {integrity: sha512-QKmhx+WEvJCV9dUy/SBdQk/ApaJ5ewBFgm/b+XPlS10SusAdqUUTGvK5+hq8YSuUMXlHb/dk++UtI5YlDuDl2Q==}
 
-  '@milaboratories/pl-middle-layer@1.71.1':
-    resolution: {integrity: sha512-BR4MX5qxNH9j326lYu1iIZpC73iIduOTVHgULA76YkFsZZefYUqqdvgtpvt3677BTTeJGEiIEiM3UGtNutr0Cg==}
+  '@milaboratories/pl-middle-layer@1.71.2':
+    resolution: {integrity: sha512-tyo3+f6nuJdoefIqPgZtoagRQJjHaP4EJ5YkGmMiEPAcQaPcVjYaBMJbPX6aQZ6BCdNwzITXoXpMb2nUHyZ8Hg==}
     engines: {node: '>=22.19.0'}
 
   '@milaboratories/pl-model-backend@1.4.23':
@@ -1779,8 +1782,8 @@ packages:
     engines: {node: '>=22'}
     hasBin: true
 
-  '@platforma-sdk/test@1.83.12':
-    resolution: {integrity: sha512-JT6mrqDkBdZ6Q6jKMyLPHRx+UO4suk/FT6WguaNoO9F6BdSjYt9a/hr0SG6FQAD0KiS+0JSUECe0McrG7vlebw==}
+  '@platforma-sdk/test@1.83.14':
+    resolution: {integrity: sha512-as7NdNtN4KuoU7IMIXrZ/JiViaXBEX7yJsf3nd6WwfbBc9jr3M9GDeCPYpU+hg/zV/w3lofovA1C4zR3cVY17g==}
 
   '@platforma-sdk/ui-vue@1.61.1':
     resolution: {integrity: sha512-/W06aUdhukMgBec23XXIgTf1gxjOsP+aYNcCIvVt0fYu5F9cLFYCMGVZxyfyn8koePYBBJQUrxLvnvTFiEQXHw==}
@@ -6765,6 +6768,10 @@ snapshots:
       '@milaboratories/ts-helpers': 1.8.6
       zod: 3.25.76
 
+  '@milaboratories/pl-flight-recorder@0.2.0':
+    dependencies:
+      '@milaboratories/pl-model-common': 1.48.0
+
   '@milaboratories/pl-healthcheck@1.0.5':
     dependencies:
       '@grpc/grpc-js': 1.14.4
@@ -6777,7 +6784,7 @@ snapshots:
     dependencies:
       undici: 7.16.0
 
-  '@milaboratories/pl-middle-layer@1.71.1(@bytecodealliance/preview2-shim@0.17.8)(@types/node@24.5.2)':
+  '@milaboratories/pl-middle-layer@1.71.2(@bytecodealliance/preview2-shim@0.17.8)(@types/node@24.5.2)':
     dependencies:
       '@milaboratories/columns-collection-driver': 0.2.4
       '@milaboratories/computable': 2.9.8
@@ -6789,6 +6796,7 @@ snapshots:
       '@milaboratories/pl-deployments': 3.0.16
       '@milaboratories/pl-drivers': 1.16.19
       '@milaboratories/pl-errors': 1.4.38
+      '@milaboratories/pl-flight-recorder': 0.2.0
       '@milaboratories/pl-http': 1.2.4
       '@milaboratories/pl-model-backend': 1.4.23
       '@milaboratories/pl-model-common': 1.48.0
@@ -7730,11 +7738,11 @@ snapshots:
       commander: 15.0.0
       winston: 3.17.0
 
-  '@platforma-sdk/test@1.83.12(@bytecodealliance/preview2-shim@0.17.8)(@types/node@24.5.2)(vite@6.3.5(@types/node@24.5.2)(lightningcss@1.32.0)(yaml@2.8.1))':
+  '@platforma-sdk/test@1.83.14(@bytecodealliance/preview2-shim@0.17.8)(@types/node@24.5.2)(vite@6.3.5(@types/node@24.5.2)(lightningcss@1.32.0)(yaml@2.8.1))':
     dependencies:
       '@milaboratories/computable': 2.9.8
       '@milaboratories/pl-client': 3.16.0
-      '@milaboratories/pl-middle-layer': 1.71.1(@bytecodealliance/preview2-shim@0.17.8)(@types/node@24.5.2)
+      '@milaboratories/pl-middle-layer': 1.71.2(@bytecodealliance/preview2-shim@0.17.8)(@types/node@24.5.2)
       '@milaboratories/pl-tree': 1.14.2
       '@platforma-sdk/model': 1.83.9
       '@vitest/coverage-istanbul': 4.1.4(vitest@4.0.9(@types/node@24.5.2)(lightningcss@1.32.0)(yaml@2.8.1))
@@ -7758,11 +7766,11 @@ snapshots:
       - supports-color
       - vite
 
-  '@platforma-sdk/test@1.83.12(@bytecodealliance/preview2-shim@0.17.8)(@types/node@24.5.2)(vite@8.0.8(@types/node@24.5.2)(yaml@2.8.1))':
+  '@platforma-sdk/test@1.83.14(@bytecodealliance/preview2-shim@0.17.8)(@types/node@24.5.2)(vite@8.0.8(@types/node@24.5.2)(yaml@2.8.1))':
     dependencies:
       '@milaboratories/computable': 2.9.8
       '@milaboratories/pl-client': 3.16.0
-      '@milaboratories/pl-middle-layer': 1.71.1(@bytecodealliance/preview2-shim@0.17.8)(@types/node@24.5.2)
+      '@milaboratories/pl-middle-layer': 1.71.2(@bytecodealliance/preview2-shim@0.17.8)(@types/node@24.5.2)
       '@milaboratories/pl-tree': 1.14.2
       '@platforma-sdk/model': 1.83.9
       '@vitest/coverage-istanbul': 4.1.4(vitest@4.1.4)
