@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.redefine-clonotypes.workflow
 
+## 1.12.1
+
+### Patch Changes
+
+- 02d584d: Export redefined clonotype-cell linker column
+
 ## 1.12.0
 
 ### Minor Changes

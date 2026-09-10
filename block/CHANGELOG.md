@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.redefine-clonotypes
 
+## 1.8.1
+
+### Patch Changes
+
+- 02d584d: Export redefined clonotype-cell linker column
+
 ## 1.8.0
 
 ### Minor Changes
