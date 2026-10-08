@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.redefine-clonotypes.workflow
 
+## 1.13.0
+
+### Minor Changes
+
+- ca83c73: Skip missing chain B definition columns, fixing a crash on scFv input with an imputed light chain
+
 ## 1.12.1
 
 ### Patch Changes
