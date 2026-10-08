@@ -231,10 +231,21 @@ self.body(func(inputs) {
 		for i, _ in args.clonotypeDefinition {
 			clonotypeDefinitionCols = append(clonotypeDefinitionCols, columns.getColumn(anchor + "_def_" + i))
 		}
-		// For single-cell, also include chain B definition columns
+		// For single-cell, also include chain B definition columns. A chain B column
+		// can be absent: it is registered only for chain A definition columns, and
+		// scFv with an imputed light chain exports no chain B columns at all.
 		if isSingleCell {
+			bundleKeys := {}
+			for k in columns.getColumnKeys() {
+				bundleKeys[k] = true
+			}
 			for i, _ in args.clonotypeDefinition {
-				clonotypeDefinitionCols = append(clonotypeDefinitionCols, columns.getColumn(anchor + "_defB_" + i))
+				keyB := anchor + "_defB_" + i
+				if !bundleKeys[keyB] { continue }
+				colB := columns.getColumn(keyB)
+				if !is_undefined(colB.spec) {
+					clonotypeDefinitionCols = append(clonotypeDefinitionCols, colB)
+				}
 			}
 		}
 	
