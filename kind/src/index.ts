@@ -28,6 +28,8 @@ const NUMBERING_SCHEMES: readonly string[] = ["imgt", "kabat", "chothia"];
  */
 export type BlockParams = {
   inputRef?: PlRef;
+  /** Subset of one chain (bulk) or receptor (single-cell) of the run; restricts only that one. */
+  filterRef?: PlRef;
   selectedChainRefs?: PlRef[];
   clonotypeDefinition?: ColumnUniversalId[];
   numberingScheme?: NumberingScheme;
@@ -43,6 +45,7 @@ function parseInitializationParams(value: unknown): BlockParams {
 
   const {
     inputRef,
+    filterRef,
     selectedChainRefs,
     clonotypeDefinition,
     numberingScheme,
@@ -55,6 +58,11 @@ function parseInitializationParams(value: unknown): BlockParams {
   if (inputRef !== undefined && !isPlRef(inputRef)) {
     throw new Error(
       "'inputRef' must be a reference to an upstream column, written as { block, name }.",
+    );
+  }
+  if (filterRef !== undefined && !isPlRef(filterRef)) {
+    throw new Error(
+      "'filterRef' must be a reference to an upstream subset column, written as { block, name }.",
     );
   }
   if (selectedChainRefs !== undefined) {
@@ -99,6 +107,7 @@ function parseInitializationParams(value: unknown): BlockParams {
 
   return {
     inputRef,
+    filterRef,
     selectedChainRefs: selectedChainRefs as PlRef[] | undefined,
     clonotypeDefinition: clonotypeDefinition as ColumnUniversalId[] | undefined,
     numberingScheme: numberingScheme as NumberingScheme | undefined,

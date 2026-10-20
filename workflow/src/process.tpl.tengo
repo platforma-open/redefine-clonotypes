@@ -185,6 +185,14 @@ self.body(func(inputs) {
 	outputs := {}
 	chainLabels := []
 
+	// Optional subset. It restricts only the chain whose key axis it lives on; other chains run whole.
+	filterColumn := undefined
+	subsetChainFound := false
+	if !is_undefined(args.subset) {
+		f := columns.getColumn(json.decode(args.subset))
+		filterColumn = { spec: f.spec, data: f.data }
+	}
+
 	for chainIdx, chainRef in args.selectedChainRefs {
 		anchor := "chain_" + chainIdx
 
@@ -206,6 +214,21 @@ self.body(func(inputs) {
 		sampleIdAxisSpec := mainAbundanceCol.spec.axesSpec[0]
 		clonotypeKeyAxisSpec := mainAbundanceCol.spec.axesSpec[1]
 		isSingleCell := clonotypeKeyAxisSpec.name == "pl7.app/vdj/scClonotypeKey"
+
+		// Subset chain: its keys restrict numbering and the analysis below, before either runs
+		filterAxis := is_undefined(filterColumn) ? undefined : filterColumn.spec.axesSpec[0]
+		isSubsetChain := !is_undefined(filterAxis) && filterAxis.name == clonotypeKeyAxisSpec.name &&
+			filterAxis.domain == clonotypeKeyAxisSpec.domain
+		subsetTsv := undefined
+		if isSubsetChain {
+			subsetChainFound = true
+			subsetTsvBuilder := pframes.tsvFileBuilder()
+			subsetTsvBuilder.mem(exportMem)
+			subsetTsvBuilder.cpu(exportCpu)
+			subsetTsvBuilder.setAxisHeader(clonotypeKeyAxisSpec, "clonotypeKey")
+			subsetTsvBuilder.add(filterColumn, { header: "inSubset" })
+			subsetTsv = subsetTsvBuilder.build()
+		}
 
 		// The dataset's cell linker, to be re-keyed onto the new clonotype key further down.
 		// Get the cell axis by discarding the already known ones
@@ -510,6 +533,10 @@ self.body(func(inputs) {
 			if !is_undefined(userCpu) {
 				numberingPrepInputs.cpu = userCpu
 			}
+			// Only for a subset run, so a full-data run keeps exactly its previous inputs
+			if !is_undefined(subsetTsv) {
+				numberingPrepInputs.subsetTsv = subsetTsv
+			}
 			numberingPrep := render.create(numberingPrepTpl, numberingPrepInputs)
 			numberingTsv = numberingPrep.output("numberingTsv", 24 * 60 * 60 * 1000)
 			numberingStatsTsv = numberingPrep.output("numberingStatsTsv", 24 * 60 * 60 * 1000)
@@ -655,7 +682,8 @@ self.body(func(inputs) {
 			traceLabel = text.join(definitionLabels, "-")
 		}
 
-		trace := pSpec.makeTrace(datasetSpec, {
+		// On the subset chain the trace roots in the subset (dataset -> the block that made it)
+		trace := pSpec.makeTrace(isSubsetChain ? filterColumn.spec : datasetSpec, {
 			type: "milaboratories.redefine-clonotypes",
 			importance: 30,
 			label: traceLabel
@@ -833,6 +861,10 @@ self.body(func(inputs) {
 
 		// Load abundance data
 		df := ptWf.frame(abundancesTsv, {xsvType: "tsv"})
+		if !is_undefined(subsetTsv) {
+			subsetKeys := ptWf.frame(subsetTsv, {xsvType: "tsv"}).select(pt.col("clonotypeKey"))
+			df = df.join(subsetKeys, {on: "clonotypeKey", how: "inner"})
+		}
 
 		// Join ANARCI numbering results to abundance and derive VDJRegion 
 		// columns by concatenating individual region columns from numbered.tsv.
@@ -1300,16 +1332,25 @@ self.body(func(inputs) {
 			linkerCols = pUtil.pFrameToColumnsMap(ptResult.getFrameDirect("linkerFrame"))
 		}
 
+		// Trace, plus the subset stamp on the subset chain (its outputs cover only the subset)
+		exportSpec := func(spec) {
+			spec = trace.inject(spec)
+			if isSubsetChain {
+				spec = maps.deepMerge(spec, { domain: { "pl7.app/inputSubset": args.subset } })
+			}
+			return spec
+		}
+
 		// Add this chain's PColumns to the combined PFrame
 		for k, v in abundancePf {
-			pfBuilder.add(anchor + "/" + k, trace.inject(v.spec), v.data)
+			pfBuilder.add(anchor + "/" + k, exportSpec(v.spec), v.data)
 		}
 		for k, v in propertyPf {
-			pfBuilder.add(anchor + "/" + k, trace.inject(v.spec), v.data)
+			pfBuilder.add(anchor + "/" + k, exportSpec(v.spec), v.data)
 		}
 		if !is_undefined(linkerCols) {
 			for k, v in linkerCols {
-				pfBuilder.add(anchor + "/" + k, trace.inject(v.spec), v.data)
+				pfBuilder.add(anchor + "/" + k, exportSpec(v.spec), v.data)
 			}
 		}
 
@@ -1324,6 +1365,8 @@ self.body(func(inputs) {
 		}
 
 	} // end per-chain loop
+	ll.assert(is_undefined(filterColumn) || subsetChainFound,
+		"The subset matches none of the selected chains. Select its chain, or pick another subset.")
 
 	outputs.nChains = len(args.selectedChainRefs)
 	outputs.chainLabels = chainLabels

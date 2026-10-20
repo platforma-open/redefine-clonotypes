@@ -1,13 +1,14 @@
 <script setup lang="ts">
-import type { PlRef } from "@platforma-sdk/model";
+import type { DatasetSelection } from "@platforma-sdk/model";
+import { createDatasetSelection, createPrimaryRef, plRefsEqual } from "@platforma-sdk/model";
 import {
   PlAccordionSection,
   PlAlert,
   PlBlockPage,
   PlBtnGhost,
+  PlDatasetSelector,
   PlDropdown,
   PlDropdownMulti,
-  PlDropdownRef,
   PlLogView,
   PlMaskIcon24,
   PlNumberField,
@@ -85,13 +86,27 @@ watch(
   { immediate: true },
 );
 
-// Clear dependent args when the user switches to a different VDJ dataset
-function setMixcrRun(newRef: PlRef | undefined) {
-  app.model.data.inputRef = newRef;
-  app.model.data.selectedChainRefs = [];
-  app.model.data.numberingScheme = undefined;
-  app.model.data.clonotypeDefinition = [];
-}
+// The selector picks a run, or a run plus a subset of one of its chains.
+// Switching the run clears its dependent args; switching only the subset keeps them.
+const inputSelection = computed<DatasetSelection | undefined>({
+  get: () => {
+    const { inputRef, filterRef } = app.model.data;
+    if (inputRef === undefined) return undefined;
+    return createDatasetSelection(createPrimaryRef(inputRef, filterRef));
+  },
+  set: (selection) => {
+    const inputRef = selection?.primary.column;
+    const prev = app.model.data.inputRef;
+    const sameRun =
+      inputRef !== undefined && prev !== undefined && plRefsEqual(inputRef, prev, true);
+    app.model.data.inputRef = inputRef;
+    app.model.data.filterRef = selection?.primary.filter;
+    if (sameRun) return;
+    app.model.data.selectedChainRefs = [];
+    app.model.data.numberingScheme = undefined;
+    app.model.data.clonotypeDefinition = [];
+  },
+});
 
 // Chain labels from the workflow that produced the last results.
 // These are always in sync with the stats indices regardless of current UI selection.
@@ -186,12 +201,16 @@ function numberingWarningForChain(ns: { total: number; numbered: number } | unde
     title="Redefine Clonotypes"
   >
     <!-- Input selection: VDJ dataset → chains → definition columns -->
-    <PlDropdownRef
-      v-model="app.model.data.inputRef"
+    <PlDatasetSelector
+      v-model="inputSelection"
       label="VDJ dataset"
       :options="app.model.outputs.inputOptions"
-      @update:model-value="setMixcrRun"
-    />
+    >
+      <template #tooltip>
+        A subset restricts only its own chain (bulk) or receptor (single-cell); the other chains use
+        all their clonotypes.
+      </template>
+    </PlDatasetSelector>
 
     <!-- Only shown when multiple chains available (single-cell with multiple receptor types) -->
     <PlDropdownMulti
@@ -225,8 +244,8 @@ function numberingWarningForChain(ns: { total: number; numbered: number } | unde
       <template #tooltip>
         Keep only this many redefined clonotypes, ranked by their total abundance summed across
         samples. Leave empty to keep all of them. <br />
-        Abundance fractions are still reported relative to the whole sample, not to the retained
-        subset.
+        Abundance fractions are still reported relative to all input clonotypes of the sample (the
+        picked subset, if any), not to the retained top clonotypes.
       </template>
     </PlNumberField>
 
@@ -295,7 +314,7 @@ function numberingWarningForChain(ns: { total: number; numbered: number } | unde
         <!-- Chain label header only shown when multiple chains were processed -->
         <h4 v-if="chainLabels.length > 1" style="margin: 0 0 4px 0">{{ chainLabels[chainIdx] }}</h4>
         <PlAlert v-if="stats && stats.nClonotypesBefore === 0" type="warn">
-          The input dataset is empty. Please choose a different dataset.
+          The input dataset or subset is empty. Please choose a different one.
         </PlAlert>
         <template v-else>
           <PlAlert

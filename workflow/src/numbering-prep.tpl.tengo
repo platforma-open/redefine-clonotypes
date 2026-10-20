@@ -1,6 +1,7 @@
 self := import("@platforma-sdk/workflow-tengo:tpl")
 pframes := import("@platforma-sdk/workflow-tengo:pframes")
 render := import("@platforma-sdk/workflow-tengo:render")
+pt := import("@platforma-sdk/workflow-tengo:pt")
 assets := import("@platforma-sdk/workflow-tengo:assets")
 
 numberingTpl := assets.importTemplate(":anarci-numbering")
@@ -64,6 +65,20 @@ self.body(func(inputs) {
 
 		numberingAaTsv := numberingAaTsvBuilder.build()
 		numberingInputTsv := numberingInputTsvBuilder.build()
+
+		// Subset run: number only the subset's clonotypes
+		if !is_undefined(inputs.subsetTsv) {
+			subsetWf := pt.workflow().mem(mem).cpu(cpu)
+			subsetKeys := subsetWf.frame(inputs.subsetTsv, { xsvType: "tsv", inferSchema: false }).
+				select(pt.col("clonotypeKey"))
+			subsetWf.frame(numberingAaTsv, { xsvType: "tsv", inferSchema: false }).
+				join(subsetKeys, { on: "clonotypeKey", how: "inner" }).save("numberingAa.tsv")
+			subsetWf.frame(numberingInputTsv, { xsvType: "tsv", inferSchema: false }).
+				join(subsetKeys, { on: "clonotypeKey", how: "inner" }).save("numberingInput.tsv")
+			subsetRun := subsetWf.run()
+			numberingAaTsv = subsetRun.getFile("numberingAa.tsv")
+			numberingInputTsv = subsetRun.getFile("numberingInput.tsv")
+		}
 
 		bulkChain := undefined
 		if !isSingleCell {
