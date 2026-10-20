@@ -114,21 +114,23 @@ const chainLabels = computed(
   () => (app.model.outputs.runChainLabels as string[] | undefined) ?? [],
 );
 
-// Detect stale results: snapshot the inputRef when stats arrive, then compare against
-// the current selection. Hides results when the user switches datasets before the new run completes.
+// Detect stale results: snapshot the dataset and subset when stats arrive, then compare against
+// the current selection. Hides results when the user switches either before the new run completes.
+const currentSelection = () =>
+  JSON.stringify([app.model.data.inputRef, app.model.data.filterRef ?? null]);
 const resultsRunRef = ref<unknown>(undefined);
 watch(
   () => app.model.outputs.perChainStats,
   (stats) => {
     if (stats && stats.length > 0) {
-      resultsRunRef.value = JSON.stringify(app.model.data.inputRef);
+      resultsRunRef.value = currentSelection();
     }
   },
   { immediate: true },
 );
 const resultsMatchCurrentArgs = computed(() => {
   if (!resultsRunRef.value) return false;
-  return resultsRunRef.value === JSON.stringify(app.model.data.inputRef);
+  return resultsRunRef.value === currentSelection();
 });
 
 // True if at least one non-empty chain produced an ANARCI log
