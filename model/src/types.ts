@@ -16,6 +16,8 @@ export type BlockData = {
   defaultBlockLabel: string;
   customBlockLabel: string;
   inputRef?: PlRef;
+  /** Subset column picked with the run in PlDatasetSelector; it restricts only its own chain. */
+  filterRef?: PlRef;
   selectedChainRefs: PlRef[];
   clonotypeDefinition: ColumnUniversalId[];
   numberingScheme?: NumberingScheme;
@@ -27,11 +29,11 @@ export type BlockData = {
 };
 
 /**
- * Workflow-facing args. Same field set as `data`: the block has no view state
- * and no staging phase, so nothing is withheld. The lambda that produces it is
- * the run gate.
+ * Workflow-facing args. Same field set as `data`, except that the subset goes
+ * as its canonical column id, `inputFilter`, and only when one is picked. The
+ * lambda that produces it is the run gate.
  */
-export type BlockArgs = BlockData;
+export type BlockArgs = Omit<BlockData, "filterRef"> & { inputFilter?: string };
 
 /** Legacy on-disk shape, read only by `.upgradeLegacy`. */
 export type LegacyBlockArgs = {

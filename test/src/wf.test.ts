@@ -121,7 +121,7 @@ blockTest(
     expect(redefineOutputs1.inputOptions?.ok).toBe(true);
     const runOpts = redefineOutputs1.inputOptions?.value ?? [];
     expect(runOpts.length, "Should have run options").toBeGreaterThan(0);
-    const inputRef = runOpts[0].ref;
+    const inputRef = runOpts[0].primary.ref;
 
     // Step 2: Select run, wait for chain options
     await project.mutateBlockStorage(redefineBlockId, {
@@ -205,7 +205,7 @@ blockTest(
     const redefineOutputs1 = redefineState1.outputs as Record<string, any>;
     const runOpts = redefineOutputs1.inputOptions?.value ?? [];
     expect(runOpts.length).toBeGreaterThan(0);
-    const inputRef = runOpts[0].ref;
+    const inputRef = runOpts[0].primary.ref;
 
     // Step 2: Select run, wait for chain options
     await project.mutateBlockStorage(redefineBlockId, {
@@ -288,7 +288,7 @@ blockTest(
     const redefineState1 = await awaitStableState(project.getBlockState(redefineBlockId), 60000);
     const runOpts = (redefineState1.outputs as Record<string, any>).inputOptions?.value ?? [];
     expect(runOpts.length).toBeGreaterThan(0);
-    const inputRef = runOpts[0].ref;
+    const inputRef = runOpts[0].primary.ref;
 
     // Step 2: Select run, wait for chain options
     await project.mutateBlockStorage(redefineBlockId, {

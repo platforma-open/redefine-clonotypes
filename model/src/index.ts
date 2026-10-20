@@ -1,6 +1,12 @@
 import strings from "@milaboratories/strings";
-import type { InferOutputsType } from "@platforma-sdk/model";
-import { BlockModelV3 } from "@platforma-sdk/model";
+import type { DatasetOption, InferOutputsType, PlRef, PObjectSpec } from "@platforma-sdk/model";
+import {
+  BlockModelV3,
+  buildDatasetOptions,
+  createGlobalPObjectId,
+  deriveDistinctLabels,
+  isPColumnSpec,
+} from "@platforma-sdk/model";
 import { kind } from "@platforma-open/milaboratories.redefine-clonotypes.kind";
 import { blockDataModel } from "./dataModel";
 import type { BlockArgs } from "./types";
@@ -44,6 +50,12 @@ function parseNumberingStats(tsv: string | undefined):
   return { total, numbered: Math.max(numberedH, numberedKL), unnumberedSamples };
 }
 
+// Key axes of the chain (bulk) and receptor (single-cell) datasets whose subsets this block accepts.
+const DATASET_KEY_AXES: ReadonlySet<string> = new Set([
+  "pl7.app/vdj/clonotypeKey",
+  "pl7.app/vdj/scClonotypeKey",
+]);
+
 export type { BlockArgs, BlockData, LegacyBlockArgs } from "./types";
 export { blockDataModel } from "./dataModel";
 
@@ -61,7 +73,13 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
       (!Number.isInteger(data.topClonotypes) || data.topClonotypes < 2)
     )
       throw new Error("Number of top clonotypes must be 2 or more");
-    return data;
+    const { filterRef, ...args } = data;
+    return {
+      ...args,
+      ...(filterRef !== undefined && {
+        inputFilter: createGlobalPObjectId(filterRef.blockId, filterRef.name),
+      }),
+    };
   })
 
   // Inverse of the kind's init-params contract: every field a user sets by
@@ -70,6 +88,7 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
   // templated.
   .templateParams((data) => ({
     inputRef: data.inputRef,
+    filterRef: data.filterRef,
     selectedChainRefs: data.selectedChainRefs,
     clonotypeDefinition: data.clonotypeDefinition,
     numberingScheme: data.numberingScheme,
@@ -79,7 +98,7 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
     cpu: data.cpu,
   }))
 
-  .output("inputOptions", (ctx) => {
+  .output("inputOptions", (ctx): DatasetOption[] => {
     // Discover clonotyping runs by finding anchor columns with clonotypingRunId.
     const options =
       ctx.resultPool.getOptions(
@@ -148,11 +167,51 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
       labelCounts.set(opt.label, (labelCounts.get(opt.label) ?? 0) + 1);
     }
 
-    return deduplicated.map(({ blockLabel, ...opt }) => {
+    const runs = deduplicated.map(({ blockLabel, ...opt }) => {
       if ((labelCounts.get(opt.label) ?? 0) > 1 && blockLabel) {
         return { ...opt, label: `${opt.label} / ${blockLabel}` };
       }
       return opt;
+    });
+
+    // Subsets of every chain or receptor dataset, listed under their run. A subset applies to
+    // its own chain only.
+    const runIdOf = (ref: PlRef) =>
+      ctx.resultPool.getPColumnSpecByRef(ref)?.axesSpec[1]?.domain?.[
+        "pl7.app/vdj/clonotypingRunId"
+      ];
+    const datasets =
+      buildDatasetOptions(ctx, {
+        primary: (spec) =>
+          isPColumnSpec(spec) &&
+          spec.annotations?.["pl7.app/isAnchor"] === "true" &&
+          spec.axesSpec.length === 2 &&
+          spec.axesSpec[0].name === "pl7.app/sampleId" &&
+          DATASET_KEY_AXES.has(spec.axesSpec[1].name) &&
+          spec.axesSpec[1].domain?.["pl7.app/redefined-by"] === undefined,
+        // Only subsets keyed by the clonotype axis alone
+        filter: (spec) =>
+          isPColumnSpec(spec) &&
+          spec.axesSpec.length === 1 &&
+          DATASET_KEY_AXES.has(spec.axesSpec[0].name),
+        requireEnrichments: false,
+      }) ?? [];
+
+    return runs.map((primary): DatasetOption => {
+      const runId = runIdOf(primary.ref);
+      const runDatasets = datasets.filter((d) => runIdOf(d.primary.ref) === runId);
+      const filters = runDatasets.flatMap((d) => d.filters ?? []);
+      if (filters.length === 0) return { primary };
+      // Labelled together with the run's datasets, as the SDK does per dataset, so that
+      // same-named subsets of different chains get the chain in their label.
+      const specs = [...filters, ...runDatasets.map((d) => d.primary)].map((o) =>
+        ctx.resultPool.getPColumnSpecByRef(o.ref),
+      );
+      if (specs.some((s) => s === undefined)) return { primary, filters };
+      const labels = deriveDistinctLabels(specs as PObjectSpec[], {
+        formatters: { native: () => undefined },
+      });
+      return { primary, filters: filters.map((f, i) => ({ ...f, label: labels[i] })) };
     });
   })
 
