@@ -1,5 +1,13 @@
 # @platforma-open/milaboratories.redefine-clonotypes.ui
 
+## 1.10.1
+
+### Patch Changes
+
+- 0998708: Release every package through npm trusted publishing (OIDC) so each package's trusted publisher is used before it expires.
+- Updated dependencies [0998708]
+  - @platforma-open/milaboratories.redefine-clonotypes.model@1.10.1
+
 ## 1.10.0
 
 ### Minor Changes

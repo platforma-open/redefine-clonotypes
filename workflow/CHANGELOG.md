@@ -1,5 +1,14 @@
 # @platforma-open/milaboratories.redefine-clonotypes.workflow
 
+## 1.13.1
+
+### Patch Changes
+
+- 0998708: Release every package through npm trusted publishing (OIDC) so each package's trusted publisher is used before it expires.
+- Updated dependencies [0998708]
+  - @platforma-open/milaboratories.redefine-clonotypes.anarci-numbering@1.2.4
+  - @platforma-open/milaboratories.redefine-clonotypes.assembling-fasta@1.1.3
+
 ## 1.13.0
 
 ### Minor Changes

@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.redefine-clonotypes.anarci-numbering
 
+## 1.2.4
+
+### Patch Changes
+
+- 0998708: Release every package through npm trusted publishing (OIDC) so each package's trusted publisher is used before it expires.
+
 ## 1.2.3
 
 ### Patch Changes

@@ -1,6 +1,6 @@
 {
   "name": "@platforma-open/milaboratories.redefine-clonotypes.workflow",
-  "version": "1.13.0",
+  "version": "1.13.1",
   "private": true,
   "description": "Block Workflow",
   "type": "module",
