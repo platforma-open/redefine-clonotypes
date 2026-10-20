@@ -620,6 +620,8 @@ self.body(func(inputs) {
 		for i, col in propertyCols {
 			// This block generates a new clone label column, so we skip the original one
 			if col.spec.name == "pl7.app/label" { continue }
+			// Labels and baskets from other blocks pick old clonotypes; they do not carry over to the new ones
+			if !is_undefined(col.spec.annotations) && col.spec.annotations["pl7.app/isSubset"] == "true" { continue }
 			header := "property_" + i
 			propertyHeaders[header] = col
 			propertyTsvBuilder.add(col, { header: header })
