@@ -65,6 +65,26 @@ toCombinedDomainValue := func(spec) {
 
 numberingRegions := ["FR1", "CDR1", "FR2", "CDR2", "FR3", "CDR3", "FR4"]
 
+// synthetic-repertoire-profiler's per-variant aggregates that it does not mark as
+// abundance. Read as these annotations, they are recomputed for each merged variant
+// the same way as MiXCR's clonotype-level aggregates.
+profilerAggregateAnnotations := {
+	"pl7.app/sampleCount": {
+		"pl7.app/isAbundance": "true",
+		"pl7.app/abundance/unit": "samples"
+	},
+	"pl7.app/readFractionMean": {
+		"pl7.app/isAbundance": "true",
+		"pl7.app/abundance/unit": "reads",
+		"pl7.app/abundance/normalized": "true"
+	},
+	"pl7.app/uniqueMoleculeFractionMean": {
+		"pl7.app/isAbundance": "true",
+		"pl7.app/abundance/unit": "molecules",
+		"pl7.app/abundance/normalized": "true"
+	}
+}
+
 // Maps receptor type + scClonotypeChain position to actual chain domain.
 // Used to produce correct output specs for any receptor type (IG, TCRAB, TCRGD).
 scChainToDomain := {
@@ -206,6 +226,17 @@ self.body(func(inputs) {
 		sampleIdAxisSpec := mainAbundanceCol.spec.axesSpec[0]
 		clonotypeKeyAxisSpec := mainAbundanceCol.spec.axesSpec[1]
 		isSingleCell := clonotypeKeyAxisSpec.name == "pl7.app/vdj/scClonotypeKey"
+		// synthetic-repertoire-profiler data: one level (nt or aa) of variants, no chains
+		isVariant := clonotypeKeyAxisSpec.name == "pl7.app/variantKey"
+
+		// The axes selector matches by prefix, so it also returns columns that only
+		// start with the variant axis, e.g. the profiler's [aa variantKey, nt variantKey]
+		// linker. Variant properties are the columns keyed by the variant alone.
+		if isVariant {
+			propertyCols = slices.filter(propertyCols, func(col) {
+				return len(col.spec.axesSpec) == 1
+			})
+		}
 
 		// The dataset's cell linker, to be re-keyed onto the new clonotype key further down.
 		// Get the cell axis by discarding the already known ones
@@ -640,7 +671,12 @@ self.body(func(inputs) {
 		if chainDomainKey == undefined {
 			chainDomainKey = clonotypeKeyAxisSpec.domain["pl7.app/vdj/receptor"]
 		}
-		chainLabel := friendlyChainName[chainDomainKey]
+		chainLabel := undefined
+		if isVariant {
+			chainLabel = clonotypeKeyAxisSpec.domain["pl7.app/alphabet"] == "aminoacid" ? "AA Variants" : "NT Variants"
+		} else if chainDomainKey != undefined {
+			chainLabel = friendlyChainName[chainDomainKey]
+		}
 		if chainLabel == undefined {
 			chainLabel = chainDomainKey != undefined ? chainDomainKey : "Chain " + chainIdx
 		}
@@ -668,7 +704,8 @@ self.body(func(inputs) {
 		newClonotypeKeySpec.domain = maps.merge(newClonotypeKeySpec.domain, {
 			"pl7.app/redefined-by": blockId
 		})
-		structureKey := isSingleCell ? "pl7.app/vdj/scClonotypeKey/structure" : "pl7.app/vdj/clonotypeKey/structure"
+		// pl7.app/vdj/clonotypeKey/structure, pl7.app/vdj/scClonotypeKey/structure or pl7.app/variantKey/structure
+		structureKey := clonotypeKeyAxisSpec.name + "/structure"
 		newClonotypeKeySpec.domain[structureKey] = string(json.encode(definitionStructure))
 
 		// --- Abundance output column specs ---
@@ -692,12 +729,14 @@ self.body(func(inputs) {
 			newSpecNormalized := maps.clone(newSpecUnnormalized)
 			unit := newSpecNormalized.annotations["pl7.app/abundance/unit"]
 
-			// Set normalized-specific spec name
+			// Set normalized-specific spec name. Profiler data keeps the profiler's
+			// own fraction names, which carry no vdj namespace.
+			fractionPrefix := isVariant ? "pl7.app/" : "pl7.app/vdj/"
 			normalizedSpecName := ""
 			if unit == "molecules" {
-				normalizedSpecName = "pl7.app/vdj/uniqueMoleculeFraction"
+				normalizedSpecName = fractionPrefix + "uniqueMoleculeFraction"
 			} else if unit == "reads" {
-				normalizedSpecName = "pl7.app/vdj/readFraction"
+				normalizedSpecName = fractionPrefix + "readFraction"
 			} else if unit == "cells" {
 				normalizedSpecName = "pl7.app/vdj/uniqueCellFraction"
 			} else {
@@ -754,7 +793,7 @@ self.body(func(inputs) {
 				name: "pl7.app/label",
 				valueType: "String",
 				annotations: {
-					"pl7.app/label": "Clone Id",
+					"pl7.app/label": isVariant ? "Variant Id" : "Clone Id",
 					"pl7.app/table/orderPriority": "100000",
 					"pl7.app/table/visibility": "default"
 				}
@@ -765,8 +804,10 @@ self.body(func(inputs) {
 				name: "pl7.app/vdj/redefineSourceCount",
 				valueType: "Long",
 				annotations: {
-					"pl7.app/label": "Source Clonotypes",
-					"pl7.app/description": "Number of original clonotypes merged into this redefined clonotype (convergence metric)",
+					"pl7.app/label": isVariant ? "Source Variants" : "Source Clonotypes",
+					"pl7.app/description": isVariant ?
+						"Number of original variants merged into this redefined variant (convergence metric)" :
+						"Number of original clonotypes merged into this redefined clonotype (convergence metric)",
 					"pl7.app/min": "1",
 					"pl7.app/table/visibility": "optional"
 				}
@@ -1141,8 +1182,8 @@ self.body(func(inputs) {
 		// per sample rather than once at the end. The sources are integer counts and
 		// the TSV is text, so xsv.importFile parses each value per the declared
 		// valueType of the spec it is imported against.
-		aggregateAbundanceProperty := func(col, h) {
-			unit := col.spec.annotations["pl7.app/abundance/unit"]
+		aggregateAbundanceProperty := func(annotations, h) {
+			unit := annotations["pl7.app/abundance/unit"]
 
 			// Number of samples the merged clonotype appears in.
 			if unit == "samples" {
@@ -1153,7 +1194,7 @@ self.body(func(inputs) {
 			if is_undefined(abundanceHeader) { return undefined }
 
 			// Mean over the samples where the merged clonotype is present.
-			if col.spec.annotations["pl7.app/abundance/normalized"] == "true" {
+			if annotations["pl7.app/abundance/normalized"] == "true" {
 				return pt.col("normalized_" + abundanceHeader).mean().alias(h)
 			}
 
@@ -1170,14 +1211,19 @@ self.body(func(inputs) {
 			col := propertyHeaders[h]
 			useNumbered := false
 
+			annotations := col.spec.annotations
+			if isVariant && !is_undefined(profilerAggregateAnnotations[col.spec.name]) {
+				annotations = profilerAggregateAnnotations[col.spec.name]
+			}
+
 			// Abundance aggregates → recompute from this block's own abundances
-			if col.spec.annotations["pl7.app/isAbundance"] == "true" {
-				abundanceAggExpr := aggregateAbundanceProperty(col, h)
+			if annotations["pl7.app/isAbundance"] == "true" {
+				abundanceAggExpr := aggregateAbundanceProperty(annotations, h)
 				if abundanceAggExpr != undefined {
 					aggExpressions = append(aggExpressions, abundanceAggExpr)
 					continue
 				}
-				unit := col.spec.annotations["pl7.app/abundance/unit"]
+				unit := annotations["pl7.app/abundance/unit"]
 				if is_undefined(unit) { unit = "" }
 				ll.print("redefine-clonotypes: property " + col.spec.name + " is marked as abundance with unit '" +
 					unit + "', but no per-sample abundance column carries that unit; keeping representative value")
