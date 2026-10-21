@@ -167,7 +167,12 @@ self.body(func(inputs) {
 	// with how many upstream blocks contribute per-clonotype columns.
 	//
 	// The main workflow is sized from its input volume, never below 32 GiB. A
-	// flat 32 GiB was OOM-killed on a 50M-read amplicon dataset.
+	// flat 32 GiB was OOM-killed on 39.7M clonotype rows, which need ~160 GiB.
+	//
+	// The imports write through DuckDB, which caps itself at 80% of the limit and
+	// spills below it, so their memory buys speed, never success. On 39.7M rows
+	// the abundance import takes 1440 s at 8 GiB / 2 cores, 720 s at 32 GiB / 8
+	// and 600 s at 48 GiB / 16, averaging 1.6 cores used at 8 cores and above.
 	//
 	// The main workflow keeps 8 cores. Polars threads raise its peak RAM as well:
 	// per GiB of TSV input, a groupBy with maxBy needs 4.09 GiB at 2 threads,
@@ -187,8 +192,8 @@ self.body(func(inputs) {
 	mainWfCpu := 8
 	exportMem := "24GiB"
 	exportCpu := 2
-	importMem := "8GiB"
-	importCpu := 2
+	importMem := "32GiB"
+	importCpu := 4
 
 	// An explicit user override still applies to every step, as before.
 	userMem := undefined
