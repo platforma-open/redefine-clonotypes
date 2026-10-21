@@ -17,6 +17,7 @@ pUtil := import("@platforma-sdk/workflow-tengo:pframes.util")
 json := import("json")
 assets := import("@platforma-sdk/workflow-tengo:assets")
 render := import("@platforma-sdk/workflow-tengo:render")
+units := import("@platforma-sdk/workflow-tengo:units")
 
 anonymizationTpl := assets.importTemplate(":anonymization")
 deanonimizationTpl := assets.importTemplate(":deanonimization")
@@ -165,20 +166,24 @@ self.body(func(inputs) {
 	// original 16 GiB because its cost scales with column count, which varies
 	// with how many upstream blocks contribute per-clonotype columns.
 	//
-	// The main workflow keeps 8 cores. It reads TSVs rather than a p-frame, so
-	// it never decodes a parquet row group and the thread multiplier above does
-	// not apply to it; verified to complete at 32 GiB on 8 threads. Only the
-	// p-frame readers need their thread count held down.
+	// The main workflow is sized from its input volume, never below 32 GiB. A
+	// flat 32 GiB was OOM-killed on a 50M-read amplicon dataset.
+	//
+	// The main workflow keeps 8 cores. Polars threads raise its peak RAM as well:
+	// per GiB of TSV input, a groupBy with maxBy needs 4.09 GiB at 2 threads,
+	// 4.94 at 8 and 6.85 at 32 (MILAB-6874). The 8 cores buy wall time with
+	// that RAM.
 	//
 	// The p-frame readers ask for 2 cores rather than 1. POLARS_MAX_THREADS is
-	// max(2, cpu), so 1 and 2 both yield two threads and an identical memory
+	// min(8, max(2, cpu)), so 1 and 2 both yield two threads and an identical memory
 	// profile — but at cpu 1 those two threads timeshare a single granted core.
 	// Asking for 2 is therefore memory-neutral by construction and only stops
 	// the oversubscription. Going below 2 buys nothing; see MILAB-6747.
 	//
 	// Steps that declare their own sizes (numbering, ANARCI, deanonymization)
 	// are left alone rather than overridden — see the call sites below.
-	mainWfMem := "32GiB"
+	mainWfMem := undefined
+	mainWfMemFloor := 32 * units.GiB
 	mainWfCpu := 8
 	exportMem := "24GiB"
 	exportCpu := 2
@@ -869,7 +874,11 @@ self.body(func(inputs) {
 		// ============================================================
 
 		ptWf := pt.workflow()
-		ptWf.mem(mainWfMem)
+		if is_undefined(mainWfMem) {
+			ptWf.memFloor(mainWfMemFloor)
+		} else {
+			ptWf.mem(mainWfMem)
+		}
 		ptWf.cpu(mainWfCpu)
 
 		// Load abundance data
