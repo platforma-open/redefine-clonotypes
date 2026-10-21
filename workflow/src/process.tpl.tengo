@@ -171,27 +171,29 @@ self.body(func(inputs) {
 	//
 	// The imports write through DuckDB, which caps itself at 80% of the limit and
 	// spills below it, so their memory buys speed, never success. On 39.7M rows
-	// the abundance import takes 1440 s at 8 GiB / 2 cores, 720 s at 32 GiB / 8
-	// and 600 s at 48 GiB / 16, averaging 1.6 cores used at 8 cores and above.
+	// the abundance import takes 1440 s at 8 GiB / 2 cores, 820 s at 32 GiB / 4,
+	// 720 s at 32 GiB / 8 and 600 s at 48 GiB / 16, averaging 1.6 cores used at
+	// 8 cores and above.
+	//
+	// On 39.7M rows the abundance export holds ~16 GiB RSS plus ~15 GiB of page
+	// cache. At 24 GiB / 2 cores the two compete and it takes 660-810 s; at
+	// 32 GiB / 4 cores it takes ~150 s.
 	//
 	// The main workflow keeps 8 cores. Polars threads raise its peak RAM as well:
 	// per GiB of TSV input, a groupBy with maxBy needs 4.09 GiB at 2 threads,
 	// 4.94 at 8 and 6.85 at 32 (MILAB-6874). The 8 cores buy wall time with
 	// that RAM.
 	//
-	// The p-frame readers ask for 2 cores rather than 1. POLARS_MAX_THREADS is
-	// min(8, max(2, cpu)), so 1 and 2 both yield two threads and an identical memory
-	// profile — but at cpu 1 those two threads timeshare a single granted core.
-	// Asking for 2 is therefore memory-neutral by construction and only stops
-	// the oversubscription. Going below 2 buys nothing; see MILAB-6747.
+	// POLARS_MAX_THREADS is min(8, max(2, cpu)), so cpu 1 and 2 both yield two
+	// threads, and cpu 1 makes them timeshare one core; see MILAB-6747.
 	//
 	// Steps that declare their own sizes (numbering, ANARCI, deanonymization)
 	// are left alone rather than overridden — see the call sites below.
 	mainWfMem := undefined
 	mainWfMemFloor := 32 * units.GiB
 	mainWfCpu := 8
-	exportMem := "24GiB"
-	exportCpu := 2
+	exportMem := "32GiB"
+	exportCpu := 4
 	importMem := "32GiB"
 	importCpu := 4
 
