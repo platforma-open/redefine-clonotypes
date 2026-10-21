@@ -1,9 +1,19 @@
 import strings from "@milaboratories/strings";
-import type { InferOutputsType } from "@platforma-sdk/model";
+import type { AxisSpec, InferOutputsType } from "@platforma-sdk/model";
 import { BlockModelV3 } from "@platforma-sdk/model";
 import { kind } from "@platforma-open/milaboratories.redefine-clonotypes.kind";
 import { blockDataModel } from "./dataModel";
 import type { BlockArgs } from "./types";
+
+/** synthetic-repertoire-profiler keys its variants on pl7.app/variantKey and scopes
+ *  the axis to its run with pl7.app/repertoire/extractionRunId. Each level it exports
+ *  (nt, aa) is a dataset of its own, with no chains. */
+function isProfilerVariantAxis(axis: AxisSpec | undefined): boolean {
+  return (
+    axis?.name === "pl7.app/variantKey" &&
+    axis.domain?.["pl7.app/repertoire/extractionRunId"] !== undefined
+  );
+}
 
 /** Parses the numbering_stats.tsv produced by the anarci-numbering software.
  *  Returns how many clonotypes existed vs how many ANARCI could number,
@@ -92,6 +102,10 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
             axes: [{ name: "pl7.app/sampleId" }, { name: "pl7.app/vdj/scClonotypeKey" }],
             annotations: { "pl7.app/isAnchor": "true" },
           },
+          {
+            axes: [{ name: "pl7.app/sampleId" }, { name: "pl7.app/variantKey" }],
+            annotations: { "pl7.app/isAnchor": "true" },
+          },
         ],
         {
           label: {
@@ -112,15 +126,20 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
       "milaboratories.mixcr-amplicon-alignment",
       "milaboratories.mixcr-scfv-clonotyping",
       "milaboratories.importVDJ",
+      "milaboratories.synthetic-repertoire-profiler",
     ]);
 
     const seenRunIds = new Set<string>();
     const deduplicated = options
       .filter((opt) => {
-        const spec = ctx.resultPool.getPColumnSpecByRef(opt.ref);
-        const runId = spec?.axesSpec[1]?.domain?.["pl7.app/vdj/clonotypingRunId"];
+        const keyAxis = ctx.resultPool.getPColumnSpecByRef(opt.ref)?.axesSpec[1];
+        if (keyAxis?.domain?.["pl7.app/redefined-by"] !== undefined) return false;
+        // Profiler data: only the aa level is offered, as a dataset of its own.
+        if (isProfilerVariantAxis(keyAxis))
+          return keyAxis?.domain?.["pl7.app/alphabet"] === "aminoacid";
+        if (keyAxis?.name === "pl7.app/variantKey") return false;
+        const runId = keyAxis?.domain?.["pl7.app/vdj/clonotypingRunId"];
         if (!runId || seenRunIds.has(runId)) return false;
-        if (spec?.axesSpec[1]?.domain?.["pl7.app/redefined-by"] !== undefined) return false;
         seenRunIds.add(runId);
         return true;
       })
@@ -163,6 +182,14 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
     // Extract clonotypingRunId from the selected anchor column's clonotypeKey axis
     const runSpec = ctx.resultPool.getPColumnSpecByRef(run);
     if (!runSpec) return undefined;
+
+    // A profiler level has no chains: the dataset is its own single "chain".
+    const keyAxis = runSpec.axesSpec[1];
+    if (isProfilerVariantAxis(keyAxis)) {
+      const isAa = keyAxis.domain?.["pl7.app/alphabet"] === "aminoacid";
+      return [{ value: run, label: isAa ? "AA Variants" : "NT Variants" }];
+    }
+
     const runId = runSpec.axesSpec[1]?.domain?.["pl7.app/vdj/clonotypingRunId"];
     if (!runId) return undefined;
 
@@ -208,8 +235,18 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
     const anchor = ctx.data.selectedChainRefs[0];
     if (anchor === undefined) return undefined;
 
-    const isSingleCell =
-      ctx.resultPool.getPColumnSpecByRef(anchor)?.axesSpec[1].name === "pl7.app/vdj/scClonotypeKey";
+    const keyAxis = ctx.resultPool.getPColumnSpecByRef(anchor)?.axesSpec[1];
+
+    // Profiler data: every sequence on the variant axis, i.e. the whole variant
+    // and each region subsequence. Each carries its own pl7.app/feature, so the
+    // picked option resolves to one column.
+    if (isProfilerVariantAxis(keyAxis)) {
+      return ctx.resultPool.getCanonicalOptions({ main: anchor }, [
+        { axes: [{ anchor: "main", idx: 1 }], name: "pl7.app/sequence" },
+      ]);
+    }
+
+    const isSingleCell = keyAxis?.name === "pl7.app/vdj/scClonotypeKey";
 
     const sequenceDomain: Record<string, string> = {};
     if (isSingleCell) {
