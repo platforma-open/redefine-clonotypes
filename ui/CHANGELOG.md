@@ -1,5 +1,13 @@
 # @platforma-open/milaboratories.redefine-clonotypes.ui
 
+## 1.13.2
+
+### Patch Changes
+
+- 348fb9d: Accept Amplicon Profiling datasets as input. The AA variant level is offered as the input dataset, and any of its sequences (whole variant or region) can be picked as the new definition. Number of Samples and the mean fractions are recomputed for merged variants.
+- Updated dependencies [348fb9d]
+  - @platforma-open/milaboratories.redefine-clonotypes.model@1.13.2
+
 ## 1.10.1
 
 ### Patch Changes
