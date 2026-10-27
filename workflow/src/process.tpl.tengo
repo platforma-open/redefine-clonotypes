@@ -700,6 +700,11 @@ self.body(func(inputs) {
 		})
 		structureKey := isSingleCell ? "pl7.app/vdj/scClonotypeKey/structure" : "pl7.app/vdj/clonotypeKey/structure"
 		newClonotypeKeySpec.domain[structureKey] = string(json.encode(definitionStructure))
+		// The subset stamp goes on the new key, as Clustering stamps its cluster axis. On the
+		// columns it would name a filter of the old key, which no run on this dataset can match.
+		if isSubsetChain {
+			newClonotypeKeySpec.domain["pl7.app/inputSubset"] = args.subset
+		}
 
 		// --- Abundance output column specs ---
 		abundanceAxes := [
@@ -1334,25 +1339,16 @@ self.body(func(inputs) {
 			linkerCols = pUtil.pFrameToColumnsMap(ptResult.getFrameDirect("linkerFrame"))
 		}
 
-		// Trace, plus the subset stamp on the subset chain (its outputs cover only the subset)
-		exportSpec := func(spec) {
-			spec = trace.inject(spec)
-			if isSubsetChain {
-				spec = maps.deepMerge(spec, { domain: { "pl7.app/inputSubset": args.subset } })
-			}
-			return spec
-		}
-
 		// Add this chain's PColumns to the combined PFrame
 		for k, v in abundancePf {
-			pfBuilder.add(anchor + "/" + k, exportSpec(v.spec), v.data)
+			pfBuilder.add(anchor + "/" + k, trace.inject(v.spec), v.data)
 		}
 		for k, v in propertyPf {
-			pfBuilder.add(anchor + "/" + k, exportSpec(v.spec), v.data)
+			pfBuilder.add(anchor + "/" + k, trace.inject(v.spec), v.data)
 		}
 		if !is_undefined(linkerCols) {
 			for k, v in linkerCols {
-				pfBuilder.add(anchor + "/" + k, exportSpec(v.spec), v.data)
+				pfBuilder.add(anchor + "/" + k, trace.inject(v.spec), v.data)
 			}
 		}
 
