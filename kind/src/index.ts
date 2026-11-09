@@ -19,7 +19,7 @@ const NUMBERING_SCHEMES: readonly string[] = ["imgt", "kabat", "chothia"];
  * new clonotype definition, the numbering scheme, the subtitle they type, and
  * the resource knobs.
  *
- * `defaultBlockLabel` is absent: a `watchEffect` in `ui/src/app.ts` derives it
+ * `subtitleLabel` is absent: it is result-pool text the definition picker writes
  * from the chosen definition's option labels.
  *
  * Every field is optional. A half-configured block is ordinary state the UI

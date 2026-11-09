@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import type { PlRef } from "@platforma-sdk/model";
+import { defaultSubtitle } from "@platforma-open/milaboratories.redefine-clonotypes.model";
+import type { ColumnUniversalId, PlRef } from "@platforma-sdk/model";
 import {
   PlAccordionSection,
   PlAlert,
@@ -91,6 +92,28 @@ function setMixcrRun(newRef: PlRef | undefined) {
   app.model.data.selectedChainRefs = [];
   app.model.data.numberingScheme = undefined;
   app.model.data.clonotypeDefinition = [];
+  refreshSubtitleLabel();
+}
+
+function setClonotypeDefinition(clonotypeDefinition: ColumnUniversalId[]) {
+  app.model.data.clonotypeDefinition = clonotypeDefinition;
+  refreshSubtitleLabel();
+}
+
+// The subtitle names the chosen definition columns as the result pool labels them.
+// Called only from the pickers' setters, so reopening the block never rewrites it.
+function refreshSubtitleLabel() {
+  const options = app.model.outputs.clonotypeDefinitionOptions ?? [];
+  app.model.data.subtitleLabel = app.model.data.clonotypeDefinition
+    .map(
+      (id) =>
+        options
+          .find((o) => o.value === id)
+          ?.label.replace("InFrame", "")
+          .trim() ?? "",
+    )
+    .filter(Boolean)
+    .join("-");
 }
 
 // Chain labels from the workflow that produced the last results.
@@ -182,7 +205,7 @@ function numberingWarningForChain(ns: { total: number; numbered: number } | unde
 <template>
   <PlBlockPage
     v-model:subtitle="app.model.data.customBlockLabel"
-    :subtitle-placeholder="app.model.data.defaultBlockLabel"
+    :subtitle-placeholder="defaultSubtitle(app.model.data)"
     title="Redefine Clonotypes"
   >
     <!-- Input selection: VDJ dataset → chains → definition columns -->
@@ -203,10 +226,11 @@ function numberingWarningForChain(ns: { total: number; numbered: number } | unde
     />
 
     <PlDropdownMulti
-      v-model="app.model.data.clonotypeDefinition"
+      :model-value="app.model.data.clonotypeDefinition"
       label="New clonotype definition"
       :options="app.model.outputs.clonotypeDefinitionOptions"
       :disabled="app.model.data.selectedChainRefs.length === 0"
+      @update:model-value="setClonotypeDefinition"
     >
       <template v-if="showChainSelector" #tooltip>
         In single-cell data, both chains (A and B) will be redefined using the same selected

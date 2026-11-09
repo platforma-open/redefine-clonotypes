@@ -127,7 +127,6 @@ blockTest(
     await project.mutateBlockStorage(redefineBlockId, {
       operation: "update-block-data",
       value: {
-        defaultBlockLabel: "",
         customBlockLabel: "",
         inputRef,
         selectedChainRefs: [],
@@ -146,7 +145,6 @@ blockTest(
     await project.mutateBlockStorage(redefineBlockId, {
       operation: "update-block-data",
       value: {
-        defaultBlockLabel: "",
         customBlockLabel: "",
         inputRef,
         selectedChainRefs,
@@ -167,7 +165,6 @@ blockTest(
     await project.mutateBlockStorage(redefineBlockId, {
       operation: "update-block-data",
       value: {
-        defaultBlockLabel: "",
         customBlockLabel: "",
         inputRef,
         selectedChainRefs,
@@ -211,7 +208,6 @@ blockTest(
     await project.mutateBlockStorage(redefineBlockId, {
       operation: "update-block-data",
       value: {
-        defaultBlockLabel: "",
         customBlockLabel: "",
         inputRef,
         selectedChainRefs: [],
@@ -230,7 +226,6 @@ blockTest(
     await project.mutateBlockStorage(redefineBlockId, {
       operation: "update-block-data",
       value: {
-        defaultBlockLabel: "",
         customBlockLabel: "",
         inputRef,
         selectedChainRefs,
@@ -251,7 +246,6 @@ blockTest(
     await project.mutateBlockStorage(redefineBlockId, {
       operation: "update-block-data",
       value: {
-        defaultBlockLabel: "",
         customBlockLabel: "",
         inputRef,
         selectedChainRefs,
@@ -294,7 +288,6 @@ blockTest(
     await project.mutateBlockStorage(redefineBlockId, {
       operation: "update-block-data",
       value: {
-        defaultBlockLabel: "",
         customBlockLabel: "",
         inputRef,
         selectedChainRefs: [],
@@ -311,7 +304,6 @@ blockTest(
     await project.mutateBlockStorage(redefineBlockId, {
       operation: "update-block-data",
       value: {
-        defaultBlockLabel: "",
         customBlockLabel: "",
         inputRef,
         selectedChainRefs,
@@ -328,7 +320,6 @@ blockTest(
     const cdr3AaOpt = defOpts.find((o: any) => o.label?.includes("CDR3 aa"));
     const selectedDef = cdr3AaOpt ?? defOpts[0];
     const baseData = {
-      defaultBlockLabel: "",
       customBlockLabel: "",
       inputRef,
       selectedChainRefs,

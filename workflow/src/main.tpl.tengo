@@ -120,7 +120,7 @@ wf.body(func(args) {
 		numberingScheme: args.numberingScheme,
 		topClonotypes: args.topClonotypes,
 		customBlockLabel: args.customBlockLabel,
-		defaultBlockLabel: args.defaultBlockLabel,
+		paramsLabel: args.paramsLabel,
 		mem: args.mem,
 		cpu: args.cpu
 	})
