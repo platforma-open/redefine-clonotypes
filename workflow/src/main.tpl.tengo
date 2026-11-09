@@ -134,8 +134,8 @@ wf.body(func(args) {
 		outputs["statsTsvContent_" + i] = processResult.output("statsTsvContent_" + i)
 		if args.numberingScheme != undefined {
 			outputs["numberingMethod_" + i] = processResult.output("numberingMethod_" + i)
-			outputs["numberingStatsContent_" + i] = processResult.output("numberingStatsContent_" + i)
-			outputs["anarciLog_" + i] = processResult.output("anarciLog_" + i)
+			outputs["numberingStatsContent_" + i] = processResult.optionalOutput("numberingStatsContent_" + i)
+			outputs["anarciLog_" + i] = processResult.optionalOutput("anarciLog_" + i)
 		}
 	}
 
