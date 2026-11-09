@@ -6,15 +6,14 @@ import type { NumberingScheme } from "@platforma-open/milaboratories.redefine-cl
 /**
  * Unified V3 data — the block's persisted state.
  *
- * There is no UI-only field here: every one is a user-committed analysis
- * decision the workflow consumes, including both label fields, which it reads
- * for the provenance trace. `defaultBlockLabel` is the one derived field -- a
- * `watchEffect` in `ui/src/app.ts` writes it from the chosen definition's
- * option labels -- so it is projected but never templated.
+ * Every field but `subtitleLabel` is a user-committed analysis decision the
+ * workflow consumes; it reads `customBlockLabel` for the provenance trace.
  */
 export type BlockData = {
-  defaultBlockLabel: string;
   customBlockLabel: string;
+  /** Result-pool labels of the chosen definition columns, shown in the subtitle.
+   *  Kept in sync with the result pool by the UI; never reaches the workflow. */
+  subtitleLabel?: string;
   inputRef?: PlRef;
   selectedChainRefs: PlRef[];
   clonotypeDefinition: ColumnUniversalId[];
@@ -27,11 +26,13 @@ export type BlockData = {
 };
 
 /**
- * Workflow-facing args. Same field set as `data`: the block has no view state
- * and no staging phase, so nothing is withheld. The lambda that produces it is
- * the run gate.
+ * Workflow-facing args: `data` without the subtitle text, plus the settings
+ * part of the trace label. The block has no staging phase. The lambda that
+ * produces it is the run gate.
  */
-export type BlockArgs = BlockData;
+export type BlockArgs = Omit<BlockData, "subtitleLabel"> & {
+  paramsLabel: string;
+};
 
 /** Legacy on-disk shape, read only by `.upgradeLegacy`. */
 export type LegacyBlockArgs = {

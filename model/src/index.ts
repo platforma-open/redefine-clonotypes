@@ -3,6 +3,7 @@ import type { AxisSpec, InferOutputsType } from "@platforma-sdk/model";
 import { BlockModelV3 } from "@platforma-sdk/model";
 import { kind } from "@platforma-open/milaboratories.redefine-clonotypes.kind";
 import { blockDataModel } from "./dataModel";
+import { defaultSubtitle, labelFromParams } from "./label";
 import type { BlockArgs } from "./types";
 
 /** synthetic-repertoire-profiler keys its variants on pl7.app/variantKey and scopes
@@ -71,13 +72,13 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
       (!Number.isInteger(data.topClonotypes) || data.topClonotypes < 2)
     )
       throw new Error("Number of top clonotypes must be 2 or more");
-    return data;
+    const { subtitleLabel: _, ...rest } = data;
+    return { ...rest, paramsLabel: labelFromParams(data) };
   })
 
   // Inverse of the kind's init-params contract: every field a user sets by
-  // hand. `defaultBlockLabel` is derived by a watchEffect in ui/src/app.ts, so
-  // it is projected into args (the workflow reads it for the trace) but never
-  // templated.
+  // hand. `subtitleLabel` is result-pool text from the source project, so it is
+  // never templated.
   .templateParams((data) => ({
     inputRef: data.inputRef,
     selectedChainRefs: data.selectedChainRefs,
@@ -496,7 +497,7 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
 
   .title(() => "Redefine Clonotypes")
 
-  .subtitle((ctx) => ctx.data.customBlockLabel || ctx.data.defaultBlockLabel)
+  .subtitle((ctx) => ctx.data.customBlockLabel || defaultSubtitle(ctx.data))
 
   .sections((_ctx) => [{ type: "link", href: "/", label: strings.titles.main }])
 
@@ -504,4 +505,4 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
 
 export type BlockOutputs = InferOutputsType<typeof platforma>;
 
-export { getDefaultBlockLabel } from "./label";
+export { defaultSubtitle } from "./label";
