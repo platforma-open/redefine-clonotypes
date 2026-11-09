@@ -139,6 +139,39 @@ resolveChain := func(col, isSingleCell) {
 	return { chainKey: chainKey, chainDomain: chain }
 }
 
+// The default trace label names the block, the chosen definition columns by their
+// native labels as the definition picker shows them (without "InFrame" and, in
+// single-cell data, without the leading chain name), and the settings that are set.
+buildTraceLabel := func(args, clonotypeDefinitionCols, isSingleCell) {
+	traceLabel := args.customBlockLabel
+	if traceLabel == "" {
+		chosenLabels := []
+		for i, _ in args.clonotypeDefinition {
+			label := clonotypeDefinitionCols[i].spec.annotations["pl7.app/label"]
+			if is_undefined(label) { continue }
+			if isSingleCell {
+				label = text.re_replace(`^(?:Heavy|Light|Alpha|Beta|Gamma|Delta)\s+`, label, "")
+			}
+			label = text.trim_space(text.replace(label, "InFrame", "", 1))
+			if label != "" {
+				chosenLabels = append(chosenLabels, label)
+			}
+		}
+		labelParts := []
+		if len(chosenLabels) > 0 {
+			labelParts = append(labelParts, text.join(chosenLabels, "-"))
+		}
+		if args.paramsLabel != "" {
+			labelParts = append(labelParts, args.paramsLabel)
+		}
+		traceLabel = "Redefine Clonotypes"
+		if len(labelParts) > 0 {
+			traceLabel = "Redefine Clonotypes (" + text.join(labelParts, ", ") + ")"
+		}
+	}
+	return traceLabel
+}
+
 // --- Body phase ---
 
 self.body(func(inputs) {
@@ -680,35 +713,7 @@ self.body(func(inputs) {
 		}
 		chainLabels = append(chainLabels, chainLabel)
 
-		// The default trace label names the block, the chosen definition columns by their
-		// native labels as the definition picker shows them (without "InFrame" and, in
-		// single-cell data, without the leading chain name), and the settings that are set.
-		traceLabel := args.customBlockLabel
-		if traceLabel == "" {
-			chosenLabels := []
-			for i, _ in args.clonotypeDefinition {
-				label := clonotypeDefinitionCols[i].spec.annotations["pl7.app/label"]
-				if is_undefined(label) { continue }
-				if isSingleCell {
-					label = text.re_replace(`^(?:Heavy|Light|Alpha|Beta|Gamma|Delta)\s+`, label, "")
-				}
-				label = text.trim_space(text.replace(label, "InFrame", "", 1))
-				if label != "" {
-					chosenLabels = append(chosenLabels, label)
-				}
-			}
-			labelParts := []
-			if len(chosenLabels) > 0 {
-				labelParts = append(labelParts, text.join(chosenLabels, "-"))
-			}
-			if args.paramsLabel != "" {
-				labelParts = append(labelParts, args.paramsLabel)
-			}
-			traceLabel = "Redefine Clonotypes"
-			if len(labelParts) > 0 {
-				traceLabel = "Redefine Clonotypes (" + text.join(labelParts, ", ") + ")"
-			}
-		}
+		traceLabel := buildTraceLabel(args, clonotypeDefinitionCols, isSingleCell)
 
 		trace := pSpec.makeTrace(datasetSpec, {
 			type: "milaboratories.redefine-clonotypes",
