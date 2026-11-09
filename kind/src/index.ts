@@ -19,8 +19,8 @@ const NUMBERING_SCHEMES: readonly string[] = ["imgt", "kabat", "chothia"];
  * new clonotype definition, the numbering scheme, the subtitle they type, and
  * the resource knobs.
  *
- * `subtitleLabel` is absent: it is result-pool text the definition picker writes
- * from the chosen definition's option labels.
+ * `subtitleLabel` is absent: it is result-pool text the UI keeps in sync with
+ * the chosen definition's option labels.
  *
  * Every field is optional. A half-configured block is ordinary state the UI
  * reaches, and the projection hands that state back untouched, so a required

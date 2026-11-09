@@ -12,7 +12,7 @@ import type { NumberingScheme } from "@platforma-open/milaboratories.redefine-cl
 export type BlockData = {
   customBlockLabel: string;
   /** Result-pool labels of the chosen definition columns, shown in the subtitle.
-   *  Written by the definition picker on a user pick; never reaches the workflow. */
+   *  Kept in sync with the result pool by the UI; never reaches the workflow. */
   subtitleLabel?: string;
   inputRef?: PlRef;
   selectedChainRefs: PlRef[];

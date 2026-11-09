@@ -10,5 +10,5 @@ The trace label is now built by the workflow from the native labels of the chose
 columns, plus the numbering scheme and the top-clonotype cut when set, as
 `Redefine Clonotypes (<columns>, <settings>)`. Opening the block no longer changes its arguments,
 and a block that was never opened still gets a meaningful label. The subtitle shows the
-result-pool labels of the chosen columns, refreshed when the user picks the definition, followed
-by the same settings. Existing blocks show as stale once after the update.
+result-pool labels of the chosen columns, kept in sync with the result pool while the block is
+open, followed by the same settings. Existing blocks show as stale once after the update.
