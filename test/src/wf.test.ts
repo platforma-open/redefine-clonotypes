@@ -2,17 +2,31 @@
 import { blockSpec as clonotypingBlockSpec } from "@platforma-open/milaboratories.mixcr-clonotyping-2";
 import type { BlockArgs as MiXCRClonotypingBlockArgs } from "@platforma-open/milaboratories.mixcr-clonotyping-2.model";
 import { uniquePlId } from "@platforma-open/milaboratories.mixcr-clonotyping-2.model";
-import type { BlockData } from "@platforma-open/milaboratories.redefine-clonotypes.model";
+import type {
+  BlockData,
+  BlockOutputs,
+  platforma,
+} from "@platforma-open/milaboratories.redefine-clonotypes.model";
 import { blockSpec as samplesAndDataBlockSpec } from "@platforma-open/milaboratories.samples-and-data";
 import type { BlockArgs as SamplesAndDataBlockArgs } from "@platforma-open/milaboratories.samples-and-data.model";
+import type { InferBlockState } from "@platforma-sdk/model";
 import { wrapOutputs } from "@platforma-sdk/model";
 import { awaitStableState, blockTest } from "@platforma-sdk/test";
 import { RedefineClonotypesBlockPointer as redefineBlockSpec } from "this-block";
 
+type BlockTestContext = Parameters<
+  Extract<Parameters<typeof blockTest>[2], (...args: never[]) => unknown>
+>[0];
+
 /**
  * Sets up a project with Samples & Data + MiXCR Clonotyping using bulk VDJ data.
  */
-async function setupUpstreamPipeline(project: any, helpers: any, expect: any) {
+async function setupUpstreamPipeline(
+  project: BlockTestContext["rawPrj"],
+  helpers: BlockTestContext["helpers"],
+  expect: BlockTestContext["expect"],
+  clonotyping: Pick<MiXCRClonotypingBlockArgs, "assembleClonesBy"> = {},
+) {
   const sndBlockId = await project.addBlock("Samples & Data", samplesAndDataBlockSpec);
   const clonotypingBlockId = await project.addBlock("MiXCR Clonotyping", clonotypingBlockSpec);
 
@@ -94,6 +108,7 @@ async function setupUpstreamPipeline(project: any, helpers: any, expect: any) {
     input: clonotypingOutputs1.inputOptions[0].ref,
     preset: { type: "name", name: "neb-human-rna-xcr-umi-nebnext" },
     chains: ["IGHeavy"],
+    ...clonotyping,
   } as unknown as MiXCRClonotypingBlockArgs);
 
   await project.runBlock(clonotypingBlockId);
@@ -360,5 +375,70 @@ blockTest(
     // ...and it is the cut doing the work, not a different redefinition.
     expect(cutStats.nClonotypesAfter).toEqual(uncutStats.nClonotypesAfter);
     expect(cutStats.nClonotypesBefore).toEqual(uncutStats.nClonotypesBefore);
+  },
+);
+
+blockTest.for([
+  { assembleClonesBy: "CDR3", numberingMethod: "cdr3" },
+  { assembleClonesBy: "VDJRegion", numberingMethod: "anarci" },
+])(
+  "numbering on a dataset assembled on $assembleClonesBy uses $numberingMethod numbering",
+  { timeout: 900000 },
+  async ({ assembleClonesBy, numberingMethod }, { rawPrj: project, helpers, expect }) => {
+    await setupUpstreamPipeline(project, helpers, expect, { assembleClonesBy });
+    const redefineBlockId = await project.addBlock("Redefine Clonotypes", redefineBlockSpec);
+
+    const optionsState = (await awaitStableState(
+      project.getBlockState(redefineBlockId),
+      60000,
+    )) as InferBlockState<typeof platforma>;
+    const inputRef = wrapOutputs<BlockOutputs>(optionsState.outputs).inputOptions?.[0]?.ref;
+    expect(inputRef).toBeDefined();
+
+    const definitionData = {
+      customBlockLabel: "",
+      inputRef,
+      selectedChainRefs: inputRef === undefined ? [] : [inputRef],
+      clonotypeDefinition: [],
+    } satisfies BlockData;
+    await project.mutateBlockStorage(redefineBlockId, {
+      operation: "update-block-data",
+      value: definitionData,
+    });
+
+    const definitionState = (await awaitStableState(
+      project.getBlockState(redefineBlockId),
+      60000,
+    )) as InferBlockState<typeof platforma>;
+    const cdr3AaOption = wrapOutputs<BlockOutputs>(
+      definitionState.outputs,
+    ).clonotypeDefinitionOptions?.find((option) => option.label === "CDR3 aa");
+    expect(cdr3AaOption).toBeDefined();
+
+    await project.mutateBlockStorage(redefineBlockId, {
+      operation: "update-block-data",
+      value: {
+        ...definitionData,
+        clonotypeDefinition: cdr3AaOption === undefined ? [] : [cdr3AaOption.value],
+        numberingScheme: "imgt",
+      } satisfies BlockData,
+    });
+    await project.runBlock(redefineBlockId);
+    const finalState = await helpers.awaitBlockDoneAndGetStableBlockState<typeof platforma>(
+      redefineBlockId,
+      300000,
+    );
+    const outputs = wrapOutputs<BlockOutputs>(finalState.outputs);
+
+    expect(outputs.perChainNumberingMethod).toEqual([numberingMethod]);
+    const numberingStats = outputs.perChainNumberingStats?.[0];
+    const anarciLog = outputs.perChainAnarciLog?.[0];
+    if (numberingMethod === "cdr3") {
+      expect(numberingStats ?? undefined).toBeUndefined();
+      expect(anarciLog ?? undefined).toBeUndefined();
+    } else {
+      expect(numberingStats?.total).toBeGreaterThan(0);
+      expect(anarciLog).toEqual(expect.any(String));
+    }
   },
 );

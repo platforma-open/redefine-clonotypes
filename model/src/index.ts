@@ -1,7 +1,7 @@
 import strings from "@milaboratories/strings";
-import type { AxisSpec, InferOutputsType } from "@platforma-sdk/model";
-import { BlockModelV3 } from "@platforma-sdk/model";
 import { kind } from "@platforma-open/milaboratories.redefine-clonotypes.kind";
+import type { AxisSpec, InferOutputsType, TreeNodeAccessor } from "@platforma-sdk/model";
+import { BlockModelV3 } from "@platforma-sdk/model";
 import { blockDataModel } from "./dataModel";
 import { defaultSubtitle, labelFromParams } from "./label";
 import type { BlockArgs } from "./types";
@@ -53,6 +53,19 @@ function parseNumberingStats(tsv: string | undefined):
     : [];
 
   return { total, numbered: Math.max(numberedH, numberedKL), unnumberedSamples };
+}
+
+/** On CDR3 numbering the ANARCI fields are Null, or errored in older runs; a Null log never settles. */
+function isCdr3Numbering(outputs: TreeNodeAccessor | undefined, chainIdx: number): boolean {
+  return (
+    outputs
+      ?.resolve({
+        field: `numberingMethod_${chainIdx}`,
+        assertFieldType: "Input",
+        allowPermanentAbsence: true,
+      })
+      ?.getDataAsJson() === "cdr3"
+  );
 }
 
 export type { BlockArgs, BlockData, LegacyBlockArgs } from "./types";
@@ -437,17 +450,21 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
   })
 
   .output("perChainNumberingStats", (ctx) => {
-    if (!ctx.data.numberingScheme) return undefined;
-    const n = Number(
+    const chainCount = Number(
       ctx.outputs
         ?.resolve({ field: "nChains", assertFieldType: "Input", allowPermanentAbsence: true })
         ?.getDataAsJson(),
     );
-    if (!n || !Number.isFinite(n)) return undefined;
-    return Array.from({ length: n }, (_, i) => {
+    if (!ctx.data.numberingScheme || !chainCount || !Number.isFinite(chainCount)) {
+      return undefined;
+    }
+    return Array.from({ length: chainCount }, (_, chainIdx) => {
+      if (isCdr3Numbering(ctx.outputs, chainIdx)) {
+        return undefined;
+      }
       const tsv = ctx.outputs
         ?.resolve({
-          field: `numberingStatsContent_${i}`,
+          field: `numberingStatsContent_${chainIdx}`,
           assertFieldType: "Input",
           allowPermanentAbsence: true,
         })
@@ -457,16 +474,21 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
   })
 
   .output("perChainAnarciLog", (ctx) => {
-    const n = Number(
+    const chainCount = Number(
       ctx.outputs
         ?.resolve({ field: "nChains", assertFieldType: "Input", allowPermanentAbsence: true })
         ?.getDataAsJson(),
     );
-    if (!n || !Number.isFinite(n)) return undefined;
-    return Array.from({ length: n }, (_, i) => {
+    if (!chainCount || !Number.isFinite(chainCount)) {
+      return undefined;
+    }
+    return Array.from({ length: chainCount }, (_, chainIdx) => {
+      if (isCdr3Numbering(ctx.outputs, chainIdx)) {
+        return undefined;
+      }
       return ctx.outputs
         ?.resolve({
-          field: `anarciLog_${i}`,
+          field: `anarciLog_${chainIdx}`,
           assertFieldType: "Input",
           allowPermanentAbsence: true,
         })
