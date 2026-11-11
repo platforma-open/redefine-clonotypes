@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.redefine-clonotypes.workflow
 
+## 1.13.5
+
+### Patch Changes
+
+- 2708fe7: Fix an error after a run with a numbering schema on a dataset assembled on CDR3, such as a MiXCR Amplicon Alignment.
+
 ## 1.13.4
 
 ### Patch Changes

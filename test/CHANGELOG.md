@@ -1,5 +1,12 @@
 # @platforma-open/milaboratories.redefine-clonotypes.test
 
+## 1.5.5
+
+### Patch Changes
+
+- Updated dependencies [2708fe7]
+  - @platforma-open/milaboratories.redefine-clonotypes.model@1.13.5
+
 ## 1.5.4
 
 ### Patch Changes
