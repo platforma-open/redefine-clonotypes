@@ -1,6 +1,6 @@
 {
   "name": "@platforma-open/milaboratories.redefine-clonotypes.model",
-  "version": "1.13.5",
+  "version": "1.13.6",
   "private": true,
   "description": "Block model",
   "type": "module",

@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.redefine-clonotypes.ui
 
+## 1.13.6
+
+### Patch Changes
+
+- @platforma-open/milaboratories.redefine-clonotypes.model@1.13.6
+
 ## 1.13.5
 
 ### Patch Changes

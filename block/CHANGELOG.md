@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.redefine-clonotypes
 
+## 1.13.6
+
+### Patch Changes
+
+- bbe2b1b: Point the block's repository link to the existing GitHub repository.
+
 ## 1.13.5
 
 ### Patch Changes
