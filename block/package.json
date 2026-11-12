@@ -45,7 +45,7 @@
     "meta": {
       "title": "Redefine Clonotypes",
       "logo": "file:../logos/block-logo.png",
-      "url": "https://github.com/platforma-open/milaboratories.redefine-clonotypes",
+      "url": "https://github.com/platforma-open/redefine-clonotypes",
       "support": "mailto:support@milaboratories.com",
       "description": "Redefines clonotype definition by re-grouping them based on a new set of features and recalculates abundances.",
       "longDescription": "file:../docs/description.md",
