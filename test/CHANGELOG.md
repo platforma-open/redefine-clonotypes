@@ -1,5 +1,46 @@
 # @platforma-open/milaboratories.redefine-clonotypes.test
 
+## 1.5.6
+
+### Patch Changes
+
+- @platforma-open/milaboratories.redefine-clonotypes.model@1.13.6
+
+## 1.5.5
+
+### Patch Changes
+
+- Updated dependencies [2708fe7]
+  - @platforma-open/milaboratories.redefine-clonotypes.model@1.13.5
+
+## 1.5.4
+
+### Patch Changes
+
+- Updated dependencies [9333185]
+  - @platforma-open/milaboratories.redefine-clonotypes.model@1.13.4
+
+## 1.5.3
+
+### Patch Changes
+
+- @platforma-open/milaboratories.redefine-clonotypes.model@1.13.3
+
+## 1.5.2
+
+### Patch Changes
+
+- Updated dependencies [348fb9d]
+  - @platforma-open/milaboratories.redefine-clonotypes.model@1.13.2
+
+## 1.5.1
+
+### Patch Changes
+
+- 0998708: Release every package through npm trusted publishing (OIDC) so each package's trusted publisher is used before it expires.
+- Updated dependencies [0998708]
+  - @platforma-open/milaboratories.redefine-clonotypes.model@1.10.1
+
 ## 1.5.0
 
 ### Minor Changes

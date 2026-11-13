@@ -1,5 +1,13 @@
 import strings from "@milaboratories/strings";
-import type { DatasetOption, InferOutputsType, PlRef, PObjectSpec } from "@platforma-sdk/model";
+import { kind } from "@platforma-open/milaboratories.redefine-clonotypes.kind";
+import type {
+  AxisSpec,
+  DatasetOption,
+  InferOutputsType,
+  PlRef,
+  PObjectSpec,
+  TreeNodeAccessor,
+} from "@platforma-sdk/model";
 import {
   BlockModelV3,
   buildDatasetOptions,
@@ -7,9 +15,19 @@ import {
   deriveDistinctLabels,
   isPColumnSpec,
 } from "@platforma-sdk/model";
-import { kind } from "@platforma-open/milaboratories.redefine-clonotypes.kind";
 import { blockDataModel } from "./dataModel";
+import { defaultSubtitle, labelFromParams } from "./label";
 import type { BlockArgs } from "./types";
+
+/** synthetic-repertoire-profiler keys its variants on pl7.app/variantKey and scopes
+ *  the axis to its run with pl7.app/repertoire/extractionRunId. Each level it exports
+ *  (nt, aa) is a dataset of its own, with no chains. */
+function isProfilerVariantAxis(axis: AxisSpec | undefined): boolean {
+  return (
+    axis?.name === "pl7.app/variantKey" &&
+    axis.domain?.["pl7.app/repertoire/extractionRunId"] !== undefined
+  );
+}
 
 /** Parses the numbering_stats.tsv produced by the anarci-numbering software.
  *  Returns how many clonotypes existed vs how many ANARCI could number,
@@ -56,6 +74,19 @@ const DATASET_KEY_AXES: ReadonlySet<string> = new Set([
   "pl7.app/vdj/scClonotypeKey",
 ]);
 
+/** On CDR3 numbering the ANARCI fields are Null, or errored in older runs; a Null log never settles. */
+function isCdr3Numbering(outputs: TreeNodeAccessor | undefined, chainIdx: number): boolean {
+  return (
+    outputs
+      ?.resolve({
+        field: `numberingMethod_${chainIdx}`,
+        assertFieldType: "Input",
+        allowPermanentAbsence: true,
+      })
+      ?.getDataAsJson() === "cdr3"
+  );
+}
+
 export type { BlockArgs, BlockData, LegacyBlockArgs } from "./types";
 export { blockDataModel } from "./dataModel";
 
@@ -73,9 +104,10 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
       (!Number.isInteger(data.topClonotypes) || data.topClonotypes < 2)
     )
       throw new Error("Number of top clonotypes must be 2 or more");
-    const { filterRef, ...args } = data;
+    const { subtitleLabel: _, filterRef, ...rest } = data;
     return {
-      ...args,
+      ...rest,
+      paramsLabel: labelFromParams(data),
       ...(filterRef !== undefined && {
         inputFilter: createGlobalPObjectId(filterRef.blockId, filterRef.name),
       }),
@@ -83,9 +115,8 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
   })
 
   // Inverse of the kind's init-params contract: every field a user sets by
-  // hand. `defaultBlockLabel` is derived by a watchEffect in ui/src/app.ts, so
-  // it is projected into args (the workflow reads it for the trace) but never
-  // templated.
+  // hand. `subtitleLabel` is result-pool text from the source project, so it is
+  // never templated.
   .templateParams((data) => ({
     inputRef: data.inputRef,
     filterRef: data.filterRef,
@@ -111,6 +142,10 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
             axes: [{ name: "pl7.app/sampleId" }, { name: "pl7.app/vdj/scClonotypeKey" }],
             annotations: { "pl7.app/isAnchor": "true" },
           },
+          {
+            axes: [{ name: "pl7.app/sampleId" }, { name: "pl7.app/variantKey" }],
+            annotations: { "pl7.app/isAnchor": "true" },
+          },
         ],
         {
           label: {
@@ -131,15 +166,20 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
       "milaboratories.mixcr-amplicon-alignment",
       "milaboratories.mixcr-scfv-clonotyping",
       "milaboratories.importVDJ",
+      "milaboratories.synthetic-repertoire-profiler",
     ]);
 
     const seenRunIds = new Set<string>();
     const deduplicated = options
       .filter((opt) => {
-        const spec = ctx.resultPool.getPColumnSpecByRef(opt.ref);
-        const runId = spec?.axesSpec[1]?.domain?.["pl7.app/vdj/clonotypingRunId"];
+        const keyAxis = ctx.resultPool.getPColumnSpecByRef(opt.ref)?.axesSpec[1];
+        if (keyAxis?.domain?.["pl7.app/redefined-by"] !== undefined) return false;
+        // Profiler data: only the aa level is offered, as a dataset of its own.
+        if (isProfilerVariantAxis(keyAxis))
+          return keyAxis?.domain?.["pl7.app/alphabet"] === "aminoacid";
+        if (keyAxis?.name === "pl7.app/variantKey") return false;
+        const runId = keyAxis?.domain?.["pl7.app/vdj/clonotypingRunId"];
         if (!runId || seenRunIds.has(runId)) return false;
-        if (spec?.axesSpec[1]?.domain?.["pl7.app/redefined-by"] !== undefined) return false;
         seenRunIds.add(runId);
         return true;
       })
@@ -222,6 +262,14 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
     // Extract clonotypingRunId from the selected anchor column's clonotypeKey axis
     const runSpec = ctx.resultPool.getPColumnSpecByRef(run);
     if (!runSpec) return undefined;
+
+    // A profiler level has no chains: the dataset is its own single "chain".
+    const keyAxis = runSpec.axesSpec[1];
+    if (isProfilerVariantAxis(keyAxis)) {
+      const isAa = keyAxis.domain?.["pl7.app/alphabet"] === "aminoacid";
+      return [{ value: run, label: isAa ? "AA Variants" : "NT Variants" }];
+    }
+
     const runId = runSpec.axesSpec[1]?.domain?.["pl7.app/vdj/clonotypingRunId"];
     if (!runId) return undefined;
 
@@ -267,8 +315,18 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
     const anchor = ctx.data.selectedChainRefs[0];
     if (anchor === undefined) return undefined;
 
-    const isSingleCell =
-      ctx.resultPool.getPColumnSpecByRef(anchor)?.axesSpec[1].name === "pl7.app/vdj/scClonotypeKey";
+    const keyAxis = ctx.resultPool.getPColumnSpecByRef(anchor)?.axesSpec[1];
+
+    // Profiler data: every sequence on the variant axis, i.e. the whole variant
+    // and each region subsequence. Each carries its own pl7.app/feature, so the
+    // picked option resolves to one column.
+    if (isProfilerVariantAxis(keyAxis)) {
+      return ctx.resultPool.getCanonicalOptions({ main: anchor }, [
+        { axes: [{ anchor: "main", idx: 1 }], name: "pl7.app/sequence" },
+      ]);
+    }
+
+    const isSingleCell = keyAxis?.name === "pl7.app/vdj/scClonotypeKey";
 
     const sequenceDomain: Record<string, string> = {};
     if (isSingleCell) {
@@ -458,17 +516,21 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
   })
 
   .output("perChainNumberingStats", (ctx) => {
-    if (!ctx.data.numberingScheme) return undefined;
-    const n = Number(
+    const chainCount = Number(
       ctx.outputs
         ?.resolve({ field: "nChains", assertFieldType: "Input", allowPermanentAbsence: true })
         ?.getDataAsJson(),
     );
-    if (!n || !Number.isFinite(n)) return undefined;
-    return Array.from({ length: n }, (_, i) => {
+    if (!ctx.data.numberingScheme || !chainCount || !Number.isFinite(chainCount)) {
+      return undefined;
+    }
+    return Array.from({ length: chainCount }, (_, chainIdx) => {
+      if (isCdr3Numbering(ctx.outputs, chainIdx)) {
+        return undefined;
+      }
       const tsv = ctx.outputs
         ?.resolve({
-          field: `numberingStatsContent_${i}`,
+          field: `numberingStatsContent_${chainIdx}`,
           assertFieldType: "Input",
           allowPermanentAbsence: true,
         })
@@ -478,16 +540,21 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
   })
 
   .output("perChainAnarciLog", (ctx) => {
-    const n = Number(
+    const chainCount = Number(
       ctx.outputs
         ?.resolve({ field: "nChains", assertFieldType: "Input", allowPermanentAbsence: true })
         ?.getDataAsJson(),
     );
-    if (!n || !Number.isFinite(n)) return undefined;
-    return Array.from({ length: n }, (_, i) => {
+    if (!chainCount || !Number.isFinite(chainCount)) {
+      return undefined;
+    }
+    return Array.from({ length: chainCount }, (_, chainIdx) => {
+      if (isCdr3Numbering(ctx.outputs, chainIdx)) {
+        return undefined;
+      }
       return ctx.outputs
         ?.resolve({
-          field: `anarciLog_${i}`,
+          field: `anarciLog_${chainIdx}`,
           assertFieldType: "Input",
           allowPermanentAbsence: true,
         })
@@ -518,7 +585,7 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
 
   .title(() => "Redefine Clonotypes")
 
-  .subtitle((ctx) => ctx.data.customBlockLabel || ctx.data.defaultBlockLabel)
+  .subtitle((ctx) => ctx.data.customBlockLabel || defaultSubtitle(ctx.data))
 
   .sections((_ctx) => [{ type: "link", href: "/", label: strings.titles.main }])
 
@@ -526,4 +593,4 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
 
 export type BlockOutputs = InferOutputsType<typeof platforma>;
 
-export { getDefaultBlockLabel } from "./label";
+export { defaultSubtitle } from "./label";

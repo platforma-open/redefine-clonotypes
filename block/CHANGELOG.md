@@ -1,5 +1,37 @@
 # @platforma-open/milaboratories.redefine-clonotypes
 
+## 1.13.6
+
+### Patch Changes
+
+- bbe2b1b: Point the block's repository link to the existing GitHub repository.
+
+## 1.13.5
+
+### Patch Changes
+
+- 2708fe7: Fix an error after a run with a numbering schema on a dataset assembled on CDR3, such as a MiXCR Amplicon Alignment.
+
+## 1.13.4
+
+## 1.13.3
+
+### Patch Changes
+
+- c8bd54c: Size the main clonotype-redefinition step from its input volume with a 32 GiB floor, instead of a flat 32 GiB that was OOM-killed on large datasets. Raise the TSV exports from 24 GiB / 2 cores and the p-frame imports from 8 GiB / 2 cores to 32 GiB / 4 cores, which cuts both steps several-fold on large datasets.
+
+## 1.13.2
+
+### Patch Changes
+
+- 348fb9d: Accept Amplicon Profiling datasets as input. The AA variant level is offered as the input dataset, and any of its sequences (whole variant or region) can be picked as the new definition. Number of Samples and the mean fractions are recomputed for merged variants.
+
+## 1.9.1
+
+### Patch Changes
+
+- 0998708: Release every package through npm trusted publishing (OIDC) so each package's trusted publisher is used before it expires.
+
 ## 1.9.0
 
 ### Minor Changes

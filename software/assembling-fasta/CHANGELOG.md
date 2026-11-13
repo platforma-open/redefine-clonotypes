@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.redefine-clonotypes.assembling-fasta
 
+## 1.1.3
+
+### Patch Changes
+
+- 0998708: Release every package through npm trusted publishing (OIDC) so each package's trusted publisher is used before it expires.
+
 ## 1.1.2
 
 ### Patch Changes

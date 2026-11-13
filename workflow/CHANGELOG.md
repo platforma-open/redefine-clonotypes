@@ -1,5 +1,47 @@
 # @platforma-open/milaboratories.redefine-clonotypes.workflow
 
+## 1.13.6
+
+## 1.13.5
+
+### Patch Changes
+
+- 2708fe7: Fix an error after a run with a numbering schema on a dataset assembled on CDR3, such as a MiXCR Amplicon Alignment.
+
+## 1.13.4
+
+### Patch Changes
+
+- 9333185: Compute the block label without the UI
+
+  The trace label is now built by the workflow from the native labels of the chosen definition
+  columns, plus the numbering scheme and the top-clonotype cut when set, as
+  `Redefine Clonotypes (<columns>, <settings>)`. Opening the block no longer changes its arguments,
+  and a block that was never opened still gets a meaningful label. The subtitle shows the
+  result-pool labels of the chosen columns, kept in sync with the result pool while the block is
+  open, followed by the same settings. Existing blocks show as stale once after the update.
+
+## 1.13.3
+
+### Patch Changes
+
+- c8bd54c: Size the main clonotype-redefinition step from its input volume with a 32 GiB floor, instead of a flat 32 GiB that was OOM-killed on large datasets. Raise the TSV exports from 24 GiB / 2 cores and the p-frame imports from 8 GiB / 2 cores to 32 GiB / 4 cores, which cuts both steps several-fold on large datasets.
+
+## 1.13.2
+
+### Patch Changes
+
+- 348fb9d: Accept Amplicon Profiling datasets as input. The AA variant level is offered as the input dataset, and any of its sequences (whole variant or region) can be picked as the new definition. Number of Samples and the mean fractions are recomputed for merged variants.
+
+## 1.13.1
+
+### Patch Changes
+
+- 0998708: Release every package through npm trusted publishing (OIDC) so each package's trusted publisher is used before it expires.
+- Updated dependencies [0998708]
+  - @platforma-open/milaboratories.redefine-clonotypes.anarci-numbering@1.2.4
+  - @platforma-open/milaboratories.redefine-clonotypes.assembling-fasta@1.1.3
+
 ## 1.13.0
 
 ### Minor Changes

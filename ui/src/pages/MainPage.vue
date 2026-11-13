@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { defaultSubtitle } from "@platforma-open/milaboratories.redefine-clonotypes.model";
 import type { DatasetSelection } from "@platforma-sdk/model";
 import { createDatasetSelection, createPrimaryRef, plRefsEqual } from "@platforma-sdk/model";
 import {
@@ -199,7 +200,7 @@ function numberingWarningForChain(ns: { total: number; numbered: number } | unde
 <template>
   <PlBlockPage
     v-model:subtitle="app.model.data.customBlockLabel"
-    :subtitle-placeholder="app.model.data.defaultBlockLabel"
+    :subtitle-placeholder="defaultSubtitle(app.model.data)"
     title="Redefine Clonotypes"
   >
     <!-- Input selection: VDJ dataset → chains → definition columns -->

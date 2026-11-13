@@ -17,6 +17,7 @@ pUtil := import("@platforma-sdk/workflow-tengo:pframes.util")
 json := import("json")
 assets := import("@platforma-sdk/workflow-tengo:assets")
 render := import("@platforma-sdk/workflow-tengo:render")
+units := import("@platforma-sdk/workflow-tengo:units")
 
 anonymizationTpl := assets.importTemplate(":anonymization")
 deanonimizationTpl := assets.importTemplate(":deanonimization")
@@ -64,6 +65,26 @@ toCombinedDomainValue := func(spec) {
 }
 
 numberingRegions := ["FR1", "CDR1", "FR2", "CDR2", "FR3", "CDR3", "FR4"]
+
+// synthetic-repertoire-profiler's per-variant aggregates that it does not mark as
+// abundance. Read as these annotations, they are recomputed for each merged variant
+// the same way as MiXCR's clonotype-level aggregates.
+profilerAggregateAnnotations := {
+	"pl7.app/sampleCount": {
+		"pl7.app/isAbundance": "true",
+		"pl7.app/abundance/unit": "samples"
+	},
+	"pl7.app/readFractionMean": {
+		"pl7.app/isAbundance": "true",
+		"pl7.app/abundance/unit": "reads",
+		"pl7.app/abundance/normalized": "true"
+	},
+	"pl7.app/uniqueMoleculeFractionMean": {
+		"pl7.app/isAbundance": "true",
+		"pl7.app/abundance/unit": "molecules",
+		"pl7.app/abundance/normalized": "true"
+	}
+}
 
 // Maps receptor type + scClonotypeChain position to actual chain domain.
 // Used to produce correct output specs for any receptor type (IG, TCRAB, TCRGD).
@@ -118,6 +139,39 @@ resolveChain := func(col, isSingleCell) {
 	return { chainKey: chainKey, chainDomain: chain }
 }
 
+// The default trace label names the block, the chosen definition columns by their
+// native labels as the definition picker shows them (without "InFrame" and, in
+// single-cell data, without the leading chain name), and the settings that are set.
+buildTraceLabel := func(args, clonotypeDefinitionCols, isSingleCell) {
+	traceLabel := args.customBlockLabel
+	if traceLabel == "" {
+		chosenLabels := []
+		for i, _ in args.clonotypeDefinition {
+			label := clonotypeDefinitionCols[i].spec.annotations["pl7.app/label"]
+			if is_undefined(label) { continue }
+			if isSingleCell {
+				label = text.re_replace(`^(?:Heavy|Light|Alpha|Beta|Gamma|Delta)\s+`, label, "")
+			}
+			label = text.trim_space(text.replace(label, "InFrame", "", 1))
+			if label != "" {
+				chosenLabels = append(chosenLabels, label)
+			}
+		}
+		labelParts := []
+		if len(chosenLabels) > 0 {
+			labelParts = append(labelParts, text.join(chosenLabels, "-"))
+		}
+		if args.paramsLabel != "" {
+			labelParts = append(labelParts, args.paramsLabel)
+		}
+		traceLabel = "Redefine Clonotypes"
+		if len(labelParts) > 0 {
+			traceLabel = "Redefine Clonotypes (" + text.join(labelParts, ", ") + ")"
+		}
+	}
+	return traceLabel
+}
+
 // --- Body phase ---
 
 self.body(func(inputs) {
@@ -145,25 +199,22 @@ self.body(func(inputs) {
 	// original 16 GiB because its cost scales with column count, which varies
 	// with how many upstream blocks contribute per-clonotype columns.
 	//
-	// The main workflow keeps 8 cores. It reads TSVs rather than a p-frame, so
-	// it never decodes a parquet row group and the thread multiplier above does
-	// not apply to it; verified to complete at 32 GiB on 8 threads. Only the
-	// p-frame readers need their thread count held down.
+	// The main workflow is sized from its input volume, with a 32 GiB floor.
+	// A flat 32 GiB ran out of memory on 39.7M clonotypes.
 	//
-	// The p-frame readers ask for 2 cores rather than 1. POLARS_MAX_THREADS is
-	// max(2, cpu), so 1 and 2 both yield two threads and an identical memory
-	// profile — but at cpu 1 those two threads timeshare a single granted core.
-	// Asking for 2 is therefore memory-neutral by construction and only stops
-	// the oversubscription. Going below 2 buys nothing; see MILAB-6747.
+	// Imports write through DuckDB, which spills to disk, so more memory only
+	// adds speed. At 32 GiB / 4 cores, imports and exports on large inputs run
+	// several times faster than at the old sizes.
 	//
 	// Steps that declare their own sizes (numbering, ANARCI, deanonymization)
 	// are left alone rather than overridden — see the call sites below.
-	mainWfMem := "32GiB"
+	mainWfMem := undefined
+	mainWfMemFloor := 32 * units.GiB
 	mainWfCpu := 8
-	exportMem := "24GiB"
-	exportCpu := 2
-	importMem := "8GiB"
-	importCpu := 2
+	exportMem := "32GiB"
+	exportCpu := 4
+	importMem := "32GiB"
+	importCpu := 4
 
 	// An explicit user override still applies to every step, as before.
 	userMem := undefined
@@ -214,6 +265,17 @@ self.body(func(inputs) {
 		sampleIdAxisSpec := mainAbundanceCol.spec.axesSpec[0]
 		clonotypeKeyAxisSpec := mainAbundanceCol.spec.axesSpec[1]
 		isSingleCell := clonotypeKeyAxisSpec.name == "pl7.app/vdj/scClonotypeKey"
+		// synthetic-repertoire-profiler data: one level (nt or aa) of variants, no chains
+		isVariant := clonotypeKeyAxisSpec.name == "pl7.app/variantKey"
+
+		// The axes selector matches by prefix, so it also returns columns that only
+		// start with the variant axis, e.g. the profiler's [aa variantKey, nt variantKey]
+		// linker. Variant properties are the columns keyed by the variant alone.
+		if isVariant {
+			propertyCols = slices.filter(propertyCols, func(col) {
+				return len(col.spec.axesSpec) == 1
+			})
+		}
 
 		// Subset chain: its keys restrict numbering and the analysis below, before either runs
 		filterAxis := is_undefined(filterColumn) ? undefined : filterColumn.spec.axesSpec[0]
@@ -669,20 +731,18 @@ self.body(func(inputs) {
 		if chainDomainKey == undefined {
 			chainDomainKey = clonotypeKeyAxisSpec.domain["pl7.app/vdj/receptor"]
 		}
-		chainLabel := friendlyChainName[chainDomainKey]
+		chainLabel := undefined
+		if isVariant {
+			chainLabel = clonotypeKeyAxisSpec.domain["pl7.app/alphabet"] == "aminoacid" ? "AA Variants" : "NT Variants"
+		} else if chainDomainKey != undefined {
+			chainLabel = friendlyChainName[chainDomainKey]
+		}
 		if chainLabel == undefined {
 			chainLabel = chainDomainKey != undefined ? chainDomainKey : "Chain " + chainIdx
 		}
 		chainLabels = append(chainLabels, chainLabel)
 
-		// Use customBlockLabel if user edited it, otherwise use defaultBlockLabel
-		traceLabel := args.customBlockLabel
-		if traceLabel == "" {
-			traceLabel = args.defaultBlockLabel
-		}
-		if traceLabel == "" {
-			traceLabel = text.join(definitionLabels, "-")
-		}
+		traceLabel := buildTraceLabel(args, clonotypeDefinitionCols, isSingleCell)
 
 		// On the subset chain the trace roots in the subset (dataset -> the block that made it)
 		trace := pSpec.makeTrace(isSubsetChain ? filterColumn.spec : datasetSpec, {
@@ -698,7 +758,8 @@ self.body(func(inputs) {
 		newClonotypeKeySpec.domain = maps.merge(newClonotypeKeySpec.domain, {
 			"pl7.app/redefined-by": blockId
 		})
-		structureKey := isSingleCell ? "pl7.app/vdj/scClonotypeKey/structure" : "pl7.app/vdj/clonotypeKey/structure"
+		// pl7.app/vdj/clonotypeKey/structure, pl7.app/vdj/scClonotypeKey/structure or pl7.app/variantKey/structure
+		structureKey := clonotypeKeyAxisSpec.name + "/structure"
 		newClonotypeKeySpec.domain[structureKey] = string(json.encode(definitionStructure))
 		// The subset stamp goes on the new key, as Clustering stamps its cluster axis. On the
 		// columns it would name a filter of the old key, which no run on this dataset can match.
@@ -727,12 +788,14 @@ self.body(func(inputs) {
 			newSpecNormalized := maps.clone(newSpecUnnormalized)
 			unit := newSpecNormalized.annotations["pl7.app/abundance/unit"]
 
-			// Set normalized-specific spec name
+			// Set normalized-specific spec name. Profiler data keeps the profiler's
+			// own fraction names, which carry no vdj namespace.
+			fractionPrefix := isVariant ? "pl7.app/" : "pl7.app/vdj/"
 			normalizedSpecName := ""
 			if unit == "molecules" {
-				normalizedSpecName = "pl7.app/vdj/uniqueMoleculeFraction"
+				normalizedSpecName = fractionPrefix + "uniqueMoleculeFraction"
 			} else if unit == "reads" {
-				normalizedSpecName = "pl7.app/vdj/readFraction"
+				normalizedSpecName = fractionPrefix + "readFraction"
 			} else if unit == "cells" {
 				normalizedSpecName = "pl7.app/vdj/uniqueCellFraction"
 			} else {
@@ -789,7 +852,7 @@ self.body(func(inputs) {
 				name: "pl7.app/label",
 				valueType: "String",
 				annotations: {
-					"pl7.app/label": "Clone Id",
+					"pl7.app/label": isVariant ? "Variant Id" : "Clone Id",
 					"pl7.app/table/orderPriority": "100000",
 					"pl7.app/table/visibility": "default"
 				}
@@ -800,8 +863,10 @@ self.body(func(inputs) {
 				name: "pl7.app/vdj/redefineSourceCount",
 				valueType: "Long",
 				annotations: {
-					"pl7.app/label": "Source Clonotypes",
-					"pl7.app/description": "Number of original clonotypes merged into this redefined clonotype (convergence metric)",
+					"pl7.app/label": isVariant ? "Source Variants" : "Source Clonotypes",
+					"pl7.app/description": isVariant ?
+						"Number of original variants merged into this redefined variant (convergence metric)" :
+						"Number of original clonotypes merged into this redefined clonotype (convergence metric)",
 					"pl7.app/min": "1",
 					"pl7.app/table/visibility": "optional"
 				}
@@ -863,7 +928,11 @@ self.body(func(inputs) {
 		// ============================================================
 
 		ptWf := pt.workflow()
-		ptWf.mem(mainWfMem)
+		if is_undefined(mainWfMem) {
+			ptWf.memFloor(mainWfMemFloor)
+		} else {
+			ptWf.mem(mainWfMem)
+		}
 		ptWf.cpu(mainWfCpu)
 
 		// Load abundance data
@@ -1180,8 +1249,8 @@ self.body(func(inputs) {
 		// per sample rather than once at the end. The sources are integer counts and
 		// the TSV is text, so xsv.importFile parses each value per the declared
 		// valueType of the spec it is imported against.
-		aggregateAbundanceProperty := func(col, h) {
-			unit := col.spec.annotations["pl7.app/abundance/unit"]
+		aggregateAbundanceProperty := func(annotations, h) {
+			unit := annotations["pl7.app/abundance/unit"]
 
 			// Number of samples the merged clonotype appears in.
 			if unit == "samples" {
@@ -1192,7 +1261,7 @@ self.body(func(inputs) {
 			if is_undefined(abundanceHeader) { return undefined }
 
 			// Mean over the samples where the merged clonotype is present.
-			if col.spec.annotations["pl7.app/abundance/normalized"] == "true" {
+			if annotations["pl7.app/abundance/normalized"] == "true" {
 				return pt.col("normalized_" + abundanceHeader).mean().alias(h)
 			}
 
@@ -1209,14 +1278,19 @@ self.body(func(inputs) {
 			col := propertyHeaders[h]
 			useNumbered := false
 
+			annotations := col.spec.annotations
+			if isVariant && !is_undefined(profilerAggregateAnnotations[col.spec.name]) {
+				annotations = profilerAggregateAnnotations[col.spec.name]
+			}
+
 			// Abundance aggregates → recompute from this block's own abundances
-			if col.spec.annotations["pl7.app/isAbundance"] == "true" {
-				abundanceAggExpr := aggregateAbundanceProperty(col, h)
+			if annotations["pl7.app/isAbundance"] == "true" {
+				abundanceAggExpr := aggregateAbundanceProperty(annotations, h)
 				if abundanceAggExpr != undefined {
 					aggExpressions = append(aggExpressions, abundanceAggExpr)
 					continue
 				}
-				unit := col.spec.annotations["pl7.app/abundance/unit"]
+				unit := annotations["pl7.app/abundance/unit"]
 				if is_undefined(unit) { unit = "" }
 				ll.print("redefine-clonotypes: property " + col.spec.name + " is marked as abundance with unit '" +
 					unit + "', but no per-sample abundance column carries that unit; keeping representative value")
