@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.redefine-clonotypes
 
+## 1.13.7
+
+### Patch Changes
+
+- 3ffbde9: Bump the kind version. A comment in the kind source changed without a version bump. The registry keeps a published kind version immutable by source hash, so republishing 1.1.0 with different content failed and blocked the block release.
+
 ## 1.13.6
 
 ### Patch Changes
