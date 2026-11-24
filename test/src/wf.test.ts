@@ -36,12 +36,12 @@ async function setupUpstreamPipeline(
   const metaColumn1Id = uniquePlId();
   const dataset1Id = uniquePlId();
 
-  const r1Handle = await helpers.getLocalFileHandle("./assets/SRR11233652_sampledBulk_R1.fastq.gz");
-  const r2Handle = await helpers.getLocalFileHandle("./assets/SRR11233652_sampledBulk_R2.fastq.gz");
-  const s663R1 = await helpers.getLocalFileHandle("./assets/SRR11233663_sampledBulk_R1.fastq.gz");
-  const s663R2 = await helpers.getLocalFileHandle("./assets/SRR11233663_sampledBulk_R2.fastq.gz");
-  const s664R1 = await helpers.getLocalFileHandle("./assets/SRR11233664_sampledBulk_R1.fastq.gz");
-  const s664R2 = await helpers.getLocalFileHandle("./assets/SRR11233664_sampledBulk_R2.fastq.gz");
+  const r1Handle = await helpers.getLocalFileHandle("./assets/test1_R1.fastq.gz");
+  const r2Handle = await helpers.getLocalFileHandle("./assets/test1_R2.fastq.gz");
+  const s663R1 = await helpers.getLocalFileHandle("./assets/test2_R1.fastq.gz");
+  const s663R2 = await helpers.getLocalFileHandle("./assets/test2_R2.fastq.gz");
+  const s664R1 = await helpers.getLocalFileHandle("./assets/test3_R1.fastq.gz");
+  const s664R2 = await helpers.getLocalFileHandle("./assets/test3_R2.fastq.gz");
 
   await project.setBlockArgs(sndBlockId, {
     metadata: [
@@ -56,9 +56,9 @@ async function setupUpstreamPipeline(
     sampleIds: [sample1Id, sample2Id, sample3Id],
     sampleLabelColumnLabel: "Sample Name",
     sampleLabels: {
-      [sample1Id]: "SRR11233652",
-      [sample2Id]: "SRR11233663",
-      [sample3Id]: "SRR11233664",
+      [sample1Id]: "test1",
+      [sample2Id]: "test2",
+      [sample3Id]: "test3",
     },
     datasets: [
       {
@@ -136,7 +136,7 @@ blockTest(
     expect(redefineOutputs1.inputOptions?.ok).toBe(true);
     const runOpts = redefineOutputs1.inputOptions?.value ?? [];
     expect(runOpts.length, "Should have run options").toBeGreaterThan(0);
-    const inputRef = runOpts[0].ref;
+    const inputRef = runOpts[0].primary.ref;
 
     // Step 2: Select run, wait for chain options
     await project.mutateBlockStorage(redefineBlockId, {
@@ -217,7 +217,7 @@ blockTest(
     const redefineOutputs1 = redefineState1.outputs as Record<string, any>;
     const runOpts = redefineOutputs1.inputOptions?.value ?? [];
     expect(runOpts.length).toBeGreaterThan(0);
-    const inputRef = runOpts[0].ref;
+    const inputRef = runOpts[0].primary.ref;
 
     // Step 2: Select run, wait for chain options
     await project.mutateBlockStorage(redefineBlockId, {
@@ -297,7 +297,7 @@ blockTest(
     const redefineState1 = await awaitStableState(project.getBlockState(redefineBlockId), 60000);
     const runOpts = (redefineState1.outputs as Record<string, any>).inputOptions?.value ?? [];
     expect(runOpts.length).toBeGreaterThan(0);
-    const inputRef = runOpts[0].ref;
+    const inputRef = runOpts[0].primary.ref;
 
     // Step 2: Select run, wait for chain options
     await project.mutateBlockStorage(redefineBlockId, {
@@ -392,7 +392,7 @@ blockTest.for([
       project.getBlockState(redefineBlockId),
       60000,
     )) as InferBlockState<typeof platforma>;
-    const inputRef = wrapOutputs<BlockOutputs>(optionsState.outputs).inputOptions?.[0]?.ref;
+    const inputRef = wrapOutputs<BlockOutputs>(optionsState.outputs).inputOptions?.[0]?.primary.ref;
     expect(inputRef).toBeDefined();
 
     const definitionData = {

@@ -107,12 +107,17 @@ wf.body(func(args) {
 		}, anchor + "_scFvSeqs")
 	}
 
+	// Optional subset of one chain's clonotypes, picked with the run (PlDatasetSelector)
+	if !is_undefined(args.inputFilter) {
+		bundleBuilder.addRef(json.decode(args.inputFilter))
+	}
+
 	columns := bundleBuilder.build()
 
 	// --- Delegate all processing to the inner template.
 	// The inner template uses PColumnBundle await (specs only), so its body
 	// runs as soon as upstream specs are available. ---
-	processResult := render.createEphemeral(processTpl, {
+	processInputs := {
 		columns: columns,
 		blockId: wf.blockId().getDataAsJson(),
 		selectedChainRefs: args.selectedChainRefs,
@@ -123,12 +128,19 @@ wf.body(func(args) {
 		paramsLabel: args.paramsLabel,
 		mem: args.mem,
 		cpu: args.cpu
-	})
+	}
+	// Only for a subset run, so a full-data run keeps exactly its previous inputs
+	if !is_undefined(args.inputFilter) {
+		processInputs.subset = args.inputFilter
+	}
+	processResult := render.createEphemeral(processTpl, processInputs)
 
 	// --- Collect per-chain outputs ---
 	outputs := {
 		nChains: processResult.output("nChains"),
-		chainLabels: processResult.output("chainLabels")
+		chainLabels: processResult.output("chainLabels"),
+		// Keeps the group and select results alive (not exported), so later runs recover them
+		resultsToCache: processResult.output("resultsToCache")
 	}
 	for i, _ in args.selectedChainRefs {
 		outputs["statsTsvContent_" + i] = processResult.output("statsTsvContent_" + i)

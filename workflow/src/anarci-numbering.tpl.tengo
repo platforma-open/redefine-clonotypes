@@ -1,6 +1,7 @@
 self := import("@platforma-sdk/workflow-tengo:tpl")
 exec := import("@platforma-sdk/workflow-tengo:exec")
 assets := import("@platforma-sdk/workflow-tengo:assets")
+times := import("times")
 
 anarciSw := assets.importSoftware("@platforma-open/milaboratories.software-anarci:main")
 fastaSw := assets.importSoftware("@platforma-open/milaboratories.redefine-clonotypes.assembling-fasta:main")
@@ -43,7 +44,7 @@ self.body(func(inputs) {
         arg("--output_fasta").arg("input.fasta").
         saveFile("input.fasta").
         printErrStreamToStdout().
-        cache(24 * 60 * 60 * 1000).
+        cache(24 * times.hour).
         run()
 
     // Pre-create empty CSV placeholders (writeFile) so that saveFile always finds the files,
@@ -71,7 +72,7 @@ self.body(func(inputs) {
     anarciBuilder = anarciBuilder.
         printErrStreamToStdout().
         saveStdoutStream().
-        cache(24 * 60 * 60 * 1000).
+        cache(24 * times.hour).
         run()
 
     numberingExec := exec.builder().
@@ -110,7 +111,7 @@ self.body(func(inputs) {
         saveFile("numbered.tsv").
         saveFileContent("numbering_stats.tsv").
         printErrStreamToStdout().
-        cache(24 * 60 * 60 * 1000).
+        cache(24 * times.hour).
         run()
 
     return {

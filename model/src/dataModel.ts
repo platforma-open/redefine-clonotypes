@@ -32,6 +32,7 @@ export const blockDataModel = new DataModelBuilder({ kind })
     customBlockLabel: params?.customBlockLabel ?? "",
     subtitleLabel: "",
     inputRef: params?.inputRef,
+    filterRef: params?.filterRef,
     selectedChainRefs: params?.selectedChainRefs ?? [],
     clonotypeDefinition: params?.clonotypeDefinition ?? [],
     numberingScheme: params?.numberingScheme,
