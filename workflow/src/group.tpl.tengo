@@ -1,0 +1,356 @@
+// Pure grouping template for one chain of redefine-clonotypes: every step
+// before the top-N cut.
+//
+// Every input is content: the exported tables, keyed by anonymized sample ids,
+// a plan derived from the column specs, and type-only configs. Resource sizes
+// arrive as meta inputs, which are not part of the template's identity. The
+// top-N setting is not an input, so a run that changes only top-N recovers
+// these outputs instead of computing them again; the caller keeps them cached.
+self := import("@platforma-sdk/workflow-tengo:tpl")
+ll := import("@platforma-sdk/workflow-tengo:ll")
+pt := import("@platforma-sdk/workflow-tengo:pt")
+slices := import("@platforma-sdk/workflow-tengo:slices")
+
+// Parquet tables for select.tpl.tengo; linker is {} for bulk data, which has no cell linker.
+self.defineOutputs("abundances", "properties", "linker", "stats")
+
+// Builds the pt aggregation for one property column from its plan entry.
+aggregationExpression := func(agg, mainAbundanceHeader) {
+	if agg.op == "nUnique" {
+		return pt.col(agg.column).nUnique().alias(agg.alias)
+	} else if agg.op == "sum" {
+		return pt.col(agg.column).sum().alias(agg.alias)
+	} else if agg.op == "mean" {
+		return pt.col(agg.column).mean().alias(agg.alias)
+	} else if agg.op == "maxBy" {
+		return pt.col(agg.column).maxBy(pt.col(mainAbundanceHeader)).alias(agg.alias)
+	} else if agg.op == "concatMaxBy" {
+		return pt.concatStr(slices.map(agg.columns, func(c) { return pt.col(c) }), { delimiter: "" }).
+			maxBy(pt.col(mainAbundanceHeader)).alias(agg.alias)
+	}
+	ll.panic("group: unknown aggregation op %v", agg.op)
+}
+
+numberingRegions := ["FR1", "CDR1", "FR2", "CDR2", "FR3", "CDR3", "FR4"]
+
+self.body(func(inputs) {
+	plan := inputs.plan
+	abundancesTsv := inputs.abundancesTsv
+	propertiesTsv := inputs.propertiesTsv
+	linkerTsv := inputs.linkerTsv
+	numberingTsv := inputs.numberingTsv
+	cdr3Tsv := inputs.cdr3Tsv
+	subsetTsv := inputs.subsetTsv
+
+	abundanceHeaders := plan.abundanceHeaders
+	mainAbundanceHeader := plan.mainAbundanceHeader
+	definitionHeaders := plan.definitionHeaders
+	numberedDefinitionHeaders := plan.numberedDefinitionHeaders
+	numberingScheme := plan.numberingScheme
+	numberingChains := plan.numberingChains
+	cdr3Chains := plan.cdr3Chains
+	cdr3HasAa := plan.cdr3HasAa
+	cdr3HasNt := plan.cdr3HasNt
+	existingSeqKeys := plan.existingSeqKeys
+
+	ptWf := pt.workflow()
+	if is_undefined(inputs.mainWfMem) {
+		ptWf.memFloor(inputs.mainWfMemFloor)
+	} else {
+		ptWf.mem(inputs.mainWfMem)
+	}
+	ptWf.cpu(inputs.mainWfCpu)
+
+	// Load abundance data
+	df := ptWf.frame(abundancesTsv, {xsvType: "tsv"})
+	if !is_undefined(subsetTsv) {
+		subsetKeys := ptWf.frame(subsetTsv, {xsvType: "tsv"}).select(pt.col("clonotypeKey"))
+		df = df.join(subsetKeys, {on: "clonotypeKey", how: "inner"})
+	}
+
+	// Join ANARCI numbering results to abundance and derive VDJRegion
+	// columns by concatenating individual region columns from numbered.tsv.
+	numberingDf := undefined
+	if !is_undefined(numberingTsv) {
+		numberingDf = ptWf.frame(numberingTsv, {xsvType: "tsv"})
+		df = df.join(numberingDf, {on: "clonotypeKey", how: "left"})
+		numberingDerivedExprs := []
+		for _, chainKey in numberingChains {
+			for _, alphabet in ["aminoacid", "nucleotide"] {
+				regionHeaders := []
+				for _, region in numberingRegions {
+					regionHeaders = append(regionHeaders, numberingScheme + "_" + region + "_" + (alphabet == "aminoacid" ? "aa" : "nt") + "_" + chainKey)
+				}
+				vdjHeader := numberingScheme + "_VDJRegion_" + (alphabet == "aminoacid" ? "aa" : "nt") + "_" + chainKey
+				vdjInFrameHeader := numberingScheme + "_VDJRegionInFrame_" + (alphabet == "aminoacid" ? "aa" : "nt") + "_" + chainKey
+				concatExpr := pt.concatStr(slices.map(regionHeaders, func(h) { return pt.col(h) }), {delimiter: ""})
+				numberingDerivedExprs = append(numberingDerivedExprs,
+					concatExpr.alias(vdjHeader),
+					concatExpr.alias(vdjInFrameHeader)
+				)
+				fr4Header := numberingScheme + "_FR4_" + (alphabet == "aminoacid" ? "aa" : "nt") + "_" + chainKey
+				fr4InFrameHeader := numberingScheme + "_FR4InFrame_" + (alphabet == "aminoacid" ? "aa" : "nt") + "_" + chainKey
+				numberingDerivedExprs = append(numberingDerivedExprs,
+					pt.col(fr4Header).alias(fr4InFrameHeader)
+				)
+			}
+		}
+		if len(numberingDerivedExprs) > 0 {
+			df = df.withColumns(numberingDerivedExprs...)
+		}
+	}
+	// Join CDR3 sequences (fallback when VDJRegion is unavailable).
+	// Trim leading FR3 residues and trailing FR4 residue to isolate the core CDR3.
+	cdr3Df := undefined
+	if !is_undefined(cdr3Tsv) {
+		cdr3Df = ptWf.frame(cdr3Tsv, {xsvType: "tsv"})
+		df = df.join(cdr3Df, {on: "clonotypeKey", how: "left"})
+		cdr3DerivedExprs := []
+		for _, chainKey in cdr3Chains {
+			aaCol := "cdr3_aa_" + chainKey
+			ntCol := "cdr3_nt_" + chainKey
+			isImgt := numberingScheme == "imgt"
+			if !is_undefined(cdr3HasAa[chainKey]) {
+				aaLen := pt.col(aaCol).strLenChars()
+				aaFr3Len := isImgt ? 1 : 3
+				aaFr4 := pt.col(aaCol).strSlice(aaLen.minus(1), 1)
+				aaTrimLen := aaLen.minus(aaFr3Len + 1)
+				aaTrim := pt.col(aaCol).strSlice(aaFr3Len, { length: aaTrimLen })
+				cdr3DerivedExprs = append(cdr3DerivedExprs,
+					aaTrim.alias("cdr3_trim_aa_" + chainKey)
+				)
+				if !is_undefined(existingSeqKeys["FR4|aminoacid|" + chainKey]) {
+					cdr3DerivedExprs = append(cdr3DerivedExprs,
+						aaFr4.alias(numberingScheme + "_FR4_aa_" + chainKey)
+					)
+				}
+				if !is_undefined(existingSeqKeys["FR4InFrame|aminoacid|" + chainKey]) {
+					cdr3DerivedExprs = append(cdr3DerivedExprs,
+						aaFr4.alias(numberingScheme + "_FR4InFrame_aa_" + chainKey)
+					)
+				}
+			}
+			if !is_undefined(cdr3HasNt[chainKey]) {
+				ntLen := pt.col(ntCol).strLenChars()
+				ntFr3Len := isImgt ? 3 : 9
+				ntFr4 := pt.col(ntCol).strSlice(ntLen.minus(3), 3)
+				ntTrimLen := ntLen.minus(ntFr3Len + 3)
+				ntTrim := pt.col(ntCol).strSlice(ntFr3Len, { length: ntTrimLen })
+				cdr3DerivedExprs = append(cdr3DerivedExprs,
+					ntTrim.alias("cdr3_trim_nt_" + chainKey)
+				)
+				if !is_undefined(existingSeqKeys["FR4|nucleotide|" + chainKey]) {
+					cdr3DerivedExprs = append(cdr3DerivedExprs,
+						ntFr4.alias(numberingScheme + "_FR4_nt_" + chainKey)
+					)
+				}
+				if !is_undefined(existingSeqKeys["FR4InFrame|nucleotide|" + chainKey]) {
+					cdr3DerivedExprs = append(cdr3DerivedExprs,
+						ntFr4.alias(numberingScheme + "_FR4InFrame_nt_" + chainKey)
+					)
+				}
+			}
+		}
+		if len(cdr3DerivedExprs) > 0 {
+			df = df.withColumns(cdr3DerivedExprs...)
+		}
+	}
+
+	// 1. Calculate per-sample totals for each abundance column for normalization
+	sampleTotalAggs := []
+	totalColumnHeaders := []
+	for header in abundanceHeaders {
+		totalHeader := header + "_total"
+		sampleTotalAggs = append(sampleTotalAggs, pt.col(header).sum().alias(totalHeader))
+		totalColumnHeaders = append(totalColumnHeaders, totalHeader)
+	}
+	sampleTotalsDf := df.groupBy("sampleId").agg(sampleTotalAggs...)
+
+	// Count total clonotypes BEFORE filtering
+	nClonotypesBefore := df.select(pt.col("clonotypeKey").nUnique().alias("nClonotypesBefore"))
+
+	// 2. Filter + compute new clonotype key
+	// When numbering is enabled, only clonotypes that ANARCI could number
+	// are kept. Unnumbered clonotypes have empty numbered columns and are
+	// filtered out before key computation.
+	if len(numberedDefinitionHeaders) > 0 {
+		filterExpr := undefined
+		for _, h in numberedDefinitionHeaders {
+			// A clonotype must have non-empty values for every numbered definition header
+			cond := pt.col(h).isNotNull().and(pt.col(h).neq(pt.lit("")))
+			if filterExpr == undefined {
+				filterExpr = cond
+			} else {
+				filterExpr = filterExpr.and(cond)
+			}
+		}
+		df = df.filter(filterExpr)
+	}
+	definitionColExprs := slices.map(definitionHeaders, func(h) { return pt.col(h) })
+	dfWithNewKeyStr := df.withColumns(
+		pt.
+		concatStr(definitionColExprs, {delimiter: "-"}).
+		hash("sha256", "base64_alphanumeric", 120).
+		alias("newClonotypeKey")
+	)
+
+	// 3. Aggregate abundances under new clonotype keys.
+	// Sum abundances per sample × new key. Keep the old clonotypeKey of the
+	// most-abundant member as representative (for property lookup later).
+	abundanceAggs := []
+	for h in abundanceHeaders {
+		abundanceAggs = append(abundanceAggs, pt.col(h).sum().alias(h))
+	}
+	abundanceAggs = append(abundanceAggs, pt.col("clonotypeKey").maxBy(pt.col(mainAbundanceHeader)).alias("clonotypeKey"))
+	df_abundances := dfWithNewKeyStr.groupBy("sampleId", "newClonotypeKey").agg(abundanceAggs...)
+
+	// 4. The top-N cut is in select.tpl.tengo.
+
+	// 5. Calculate stats — nClonotypesBefore from the unfiltered df,
+	// nClonotypesAfter from -> filtered + redefined df. select.tpl.tengo adds
+	// nClonotypesRetained after the top-N cut.
+	nClonotypesAfter := dfWithNewKeyStr.select(pt.col("newClonotypeKey").nUnique().alias("nClonotypesAfter"))
+	nClonotypesBefore.join(nClonotypesAfter, {how: "cross"}).save("stats.parquet")
+
+	// 6. Per-sample normalization (fraction of total).
+	// sampleTotalsDf comes from the pre-filter, pre-cut df, so fractions stay
+	// relative to the whole sample rather than to the retained subset.
+	df_abundances = df_abundances.join(sampleTotalsDf, {on: "sampleId", how: "left"})
+
+	normExpressions := []
+	for header in abundanceHeaders {
+		normExpressions = append(normExpressions,
+			pt.col(header).cast("Double").truediv(pt.col(header + "_total").cast("Double")).alias("normalized_" + header)
+		)
+	}
+	df_abundances = df_abundances.withColumns(normExpressions...)
+	df_abundances.save("abundances.parquet")
+
+	// 6b. Re-key the cell linker onto the new clonotype key.
+	//
+	// The mapping is read from dfWithNewKeyStr, BEFORE the aggregation, so every member of a merged
+	// clonotype is carried.
+	if !is_undefined(linkerTsv) {
+		keyMapDf := dfWithNewKeyStr.select(pt.col("clonotypeKey"), pt.col("newClonotypeKey")).unique()
+
+		ptWf.frame(linkerTsv, {xsvType: "tsv"}).
+			// Two inner joins, and each one drops cells on purpose: this one drops cells whose clonotype the
+			// numbering filter removed (unnumbered clonotypes never reach dfWithNewKeyStr), the second, in
+			// select.tpl.tengo, drops cells whose new clonotype the top-N cut removed.
+			join(keyMapDf, {on: "clonotypeKey", how: "inner"}).
+			save("linker.parquet")
+	}
+
+	// 7. Aggregate properties — pick representative from most-abundant old clonotype
+	df_properties := df_abundances.join(ptWf.frame(propertiesTsv, {xsvType: "tsv"}), {on: "clonotypeKey", how: "left"})
+	if numberingDf != undefined {
+		df_properties = df_properties.join(numberingDf, {on: "clonotypeKey", how: "left"})
+		numberingDerivedExprsProps := []
+		for _, chainKey in numberingChains {
+			for _, alphabet in ["aminoacid", "nucleotide"] {
+				regionHeaders := []
+				for _, region in numberingRegions {
+					regionHeaders = append(regionHeaders, numberingScheme + "_" + region + "_" + (alphabet == "aminoacid" ? "aa" : "nt") + "_" + chainKey)
+				}
+				vdjHeader := numberingScheme + "_VDJRegion_" + (alphabet == "aminoacid" ? "aa" : "nt") + "_" + chainKey
+				vdjInFrameHeader := numberingScheme + "_VDJRegionInFrame_" + (alphabet == "aminoacid" ? "aa" : "nt") + "_" + chainKey
+				concatExpr := pt.concatStr(slices.map(regionHeaders, func(h) { return pt.col(h) }), {delimiter: ""})
+				numberingDerivedExprsProps = append(numberingDerivedExprsProps,
+					concatExpr.alias(vdjHeader),
+					concatExpr.alias(vdjInFrameHeader)
+				)
+				fr4Header := numberingScheme + "_FR4_" + (alphabet == "aminoacid" ? "aa" : "nt") + "_" + chainKey
+				fr4InFrameHeader := numberingScheme + "_FR4InFrame_" + (alphabet == "aminoacid" ? "aa" : "nt") + "_" + chainKey
+				numberingDerivedExprsProps = append(numberingDerivedExprsProps,
+					pt.col(fr4Header).alias(fr4InFrameHeader)
+				)
+			}
+		}
+		if len(numberingDerivedExprsProps) > 0 {
+			df_properties = df_properties.withColumns(numberingDerivedExprsProps...)
+		}
+	}
+	if cdr3Df != undefined {
+		df_properties = df_properties.join(cdr3Df, {on: "clonotypeKey", how: "left"})
+		cdr3DerivedExprsProps := []
+		for _, chainKey in cdr3Chains {
+			aaCol := "cdr3_aa_" + chainKey
+			ntCol := "cdr3_nt_" + chainKey
+			isImgt := numberingScheme == "imgt"
+			if !is_undefined(cdr3HasAa[chainKey]) {
+				aaLen := pt.col(aaCol).strLenChars()
+				aaFr3Len := isImgt ? 1 : 3
+				aaFr4 := pt.col(aaCol).strSlice(aaLen.minus(1), 1)
+				aaTrimLen := aaLen.minus(aaFr3Len + 1)
+				aaTrim := pt.col(aaCol).strSlice(aaFr3Len, { length: aaTrimLen })
+				cdr3DerivedExprsProps = append(cdr3DerivedExprsProps,
+					aaTrim.alias("cdr3_trim_aa_" + chainKey)
+				)
+				if !is_undefined(existingSeqKeys["FR4|aminoacid|" + chainKey]) {
+					cdr3DerivedExprsProps = append(cdr3DerivedExprsProps,
+						aaFr4.alias(numberingScheme + "_FR4_aa_" + chainKey)
+					)
+				}
+				if !is_undefined(existingSeqKeys["FR4InFrame|aminoacid|" + chainKey]) {
+					cdr3DerivedExprsProps = append(cdr3DerivedExprsProps,
+						aaFr4.alias(numberingScheme + "_FR4InFrame_aa_" + chainKey)
+					)
+				}
+			}
+			if !is_undefined(cdr3HasNt[chainKey]) {
+				ntLen := pt.col(ntCol).strLenChars()
+				ntFr3Len := isImgt ? 3 : 9
+				ntFr4 := pt.col(ntCol).strSlice(ntLen.minus(3), 3)
+				ntTrimLen := ntLen.minus(ntFr3Len + 3)
+				ntTrim := pt.col(ntCol).strSlice(ntFr3Len, { length: ntTrimLen })
+				cdr3DerivedExprsProps = append(cdr3DerivedExprsProps,
+					ntTrim.alias("cdr3_trim_nt_" + chainKey)
+				)
+				if !is_undefined(existingSeqKeys["FR4|nucleotide|" + chainKey]) {
+					cdr3DerivedExprsProps = append(cdr3DerivedExprsProps,
+						ntFr4.alias(numberingScheme + "_FR4_nt_" + chainKey)
+					)
+				}
+				if !is_undefined(existingSeqKeys["FR4InFrame|nucleotide|" + chainKey]) {
+					cdr3DerivedExprsProps = append(cdr3DerivedExprsProps,
+						ntFr4.alias(numberingScheme + "_FR4InFrame_nt_" + chainKey)
+					)
+				}
+			}
+		}
+		if len(cdr3DerivedExprsProps) > 0 {
+			df_properties = df_properties.withColumns(cdr3DerivedExprsProps...)
+		}
+	}
+
+	aggExpressions := slices.map(plan.propertyAggregations, func(agg) {
+		return aggregationExpression(agg, mainAbundanceHeader)
+	})
+	aggregatedDf := df_properties.groupBy("newClonotypeKey").agg(aggExpressions...)
+
+	// Convergence metric: how many distinct original clonotypes were merged into each new key.
+	// Computed from dfWithNewKeyStr, i.e. post numbering-filter but pre top-N cut, so each
+	// key's count is its full merge size. The top-N cut in select.tpl.tengo keeps only the
+	// retained keys, and the per-key values are unaffected by the cut.
+	sourceCountDf := dfWithNewKeyStr.
+		groupBy("newClonotypeKey").
+		agg(pt.col("clonotypeKey").nUnique().alias("redefineSourceCount"))
+	aggregatedDf = aggregatedDf.join(sourceCountDf, {on: "newClonotypeKey", how: "left"})
+
+	aggregatedDf.save("properties.parquet")
+
+	// Execute the pt workflow and collected results
+	ptResult := ptWf.run()
+
+	linker := {}
+	if !is_undefined(linkerTsv) {
+		linker = ptResult.getFile("linker.parquet")
+	}
+
+	return {
+		abundances: ptResult.getFile("abundances.parquet"),
+		properties: ptResult.getFile("properties.parquet"),
+		linker: linker,
+		stats: ptResult.getFile("stats.parquet")
+	}
+})

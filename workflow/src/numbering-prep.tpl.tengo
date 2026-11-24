@@ -3,6 +3,7 @@ pframes := import("@platforma-sdk/workflow-tengo:pframes")
 render := import("@platforma-sdk/workflow-tengo:render")
 pt := import("@platforma-sdk/workflow-tengo:pt")
 assets := import("@platforma-sdk/workflow-tengo:assets")
+times := import("times")
 
 numberingTpl := assets.importTemplate(":anarci-numbering")
 
@@ -92,12 +93,13 @@ self.body(func(inputs) {
 			isSingleCell: isSingleCell,
 			bulkChain: bulkChain,
 			cdrMappingH: cdrMappingH,
-			cdrMappingKL: cdrMappingKL,
-			mem: mem,
-			cpu: cpu
+			cdrMappingKL: cdrMappingKL
+		}, {
+			// Sizes stay out of the template's identity
+			metaInputs: { mem: mem, cpu: cpu }
 		})
-		numberingTsv = numbering.output("numbered", 24 * 60 * 60 * 1000)
-		numberingStatsTsv = numbering.output("numberingStats", 24 * 60 * 60 * 1000)
+		numberingTsv = numbering.output("numbered", 24 * times.hour)
+		numberingStatsTsv = numbering.output("numberingStats", 24 * times.hour)
 		anarciLog = numbering.output("anarciLog")
 	}
 

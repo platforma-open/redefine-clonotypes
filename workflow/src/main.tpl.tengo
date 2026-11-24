@@ -138,7 +138,9 @@ wf.body(func(args) {
 	// --- Collect per-chain outputs ---
 	outputs := {
 		nChains: processResult.output("nChains"),
-		chainLabels: processResult.output("chainLabels")
+		chainLabels: processResult.output("chainLabels"),
+		// Keeps the group and select results alive (not exported), so later runs recover them
+		resultsToCache: processResult.output("resultsToCache")
 	}
 	for i, _ in args.selectedChainRefs {
 		outputs["statsTsvContent_" + i] = processResult.output("statsTsvContent_" + i)

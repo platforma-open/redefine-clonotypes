@@ -1,0 +1,117 @@
+// Pure template for one chain of redefine-clonotypes: the top-N cut on the
+// tables from group.tpl.tengo, the clonotype labels and the imports.
+//
+// Resource sizes arrive as meta inputs, which are not part of the template's
+// identity. The caller attaches the output specs and maps the sample ids back.
+self := import("@platforma-sdk/workflow-tengo:tpl")
+pt := import("@platforma-sdk/workflow-tengo:pt")
+xsv := import("@platforma-sdk/workflow-tengo:pframes.xsv")
+
+// linkerData is {} for bulk data, which has no cell linker.
+self.defineOutputs("abundanceData", "propertyData", "linkerData", "stats")
+
+// Generate clonotype label columns from key using pt expressions.
+addClonotypeLabelColumnsPt := func(df, clonotypeKeyCol, clonotypeLabelCol) {
+	prefixTempCol := clonotypeLabelCol + "_prefix_temp"
+	rankTempCol := clonotypeLabelCol + "_rank_temp"
+
+	df = df.withColumns(
+		pt.col(clonotypeKeyCol).
+			strReplace("\\d", "", { replaceAll: true }).
+			strSlice(0, 5).
+			strToUpper().
+			alias(prefixTempCol)
+	)
+
+	df = df.withColumns(
+		pt.rank(pt.col(clonotypeKeyCol)).
+			over(pt.col(prefixTempCol)).
+			alias(rankTempCol)
+	)
+
+	df = df.withColumns(
+		pt.when(pt.col(rankTempCol).gt(pt.lit(1))).
+			then(pt.concatStr([pt.lit("C"), pt.col(prefixTempCol), pt.col(rankTempCol).cast("String")], { delimiter: "-" })).
+			otherwise(pt.concatStr([pt.lit("C"), pt.col(prefixTempCol)], { delimiter: "-" })).
+			alias(clonotypeLabelCol)
+	)
+
+	return df.withoutColumns(prefixTempCol, rankTempCol)
+}
+
+self.body(func(inputs) {
+	mainAbundanceHeader := inputs.mainAbundanceHeader
+	topClonotypes := inputs.topClonotypes
+	linkerParquet := inputs.linker
+
+	ptWf := pt.workflow()
+	if is_undefined(inputs.mainWfMem) {
+		ptWf.memFloor(inputs.mainWfMemFloor)
+	} else {
+		ptWf.mem(inputs.mainWfMem)
+	}
+	ptWf.cpu(inputs.mainWfCpu)
+
+	df_abundances := ptWf.frame(inputs.abundances, {format: "parquet"})
+	aggregatedDf := ptWf.frame(inputs.properties, {format: "parquet"})
+
+	// 4. Top-N selection.
+	// The primary abundance column is per (sample, clonotype), so it is
+	// collapsed by summing over samples, which keeps this ranking consistent
+	// with the "Supporting Reads"/"Supporting UMIs" values the block reports.
+	if !is_undefined(topClonotypes) {
+		topKeys := df_abundances.
+			groupBy("newClonotypeKey").
+			agg(pt.col(mainAbundanceHeader).sum().alias("topAbundance")).
+			sort(["topAbundance", "newClonotypeKey"], {descending: [true, false]}).
+			limit(topClonotypes).
+			select(pt.col("newClonotypeKey"))
+		df_abundances = df_abundances.join(topKeys, {on: "newClonotypeKey", how: "inner"})
+		aggregatedDf = aggregatedDf.join(topKeys, {on: "newClonotypeKey", how: "inner"})
+	}
+
+	df_abundances.save("abundances.tsv")
+
+	// 5. Stats — nClonotypesRetained from the abundances after the top-N cut,
+	// next to the counts from group.tpl.tengo.
+	nClonotypesRetained := df_abundances.select(pt.col("newClonotypeKey").nUnique().alias("nClonotypesRetained"))
+	ptWf.frame(inputs.stats, {format: "parquet"}).
+		join(nClonotypesRetained, {how: "cross"}).
+		saveContent("stats.tsv")
+
+	// 6b. The second inner join on the cell linker: drops cells whose new clonotype the top-N cut removed.
+	if !is_undefined(linkerParquet) {
+		retainedKeysDf := df_abundances.select(pt.col("newClonotypeKey")).unique()
+
+		ptWf.frame(linkerParquet, {format: "parquet"}).
+			join(retainedKeysDf, {on: "newClonotypeKey", how: "inner"}).
+			// The p-frame is written straight out of this run
+			saveFrameDirect("linkerFrame", inputs.linkerFrameCfg)
+	}
+
+	// label clonotype key deterministically on unique keys
+	aggregatedDf = addClonotypeLabelColumnsPt(aggregatedDf, "newClonotypeKey", "clonotypeLabel")
+
+	aggregatedDf.save("properties.tsv")
+
+	// Execute the pt workflow and collected results
+	ptResult := ptWf.run()
+
+	// Imported here rather than by the caller: an import outside a recovered
+	// template would run again on every block run.
+	importOps := { dataOnly: true, mem: inputs.importMem, cpu: inputs.importCpu }
+	abundanceData := xsv.importFile(ptResult.getFile("abundances.tsv"), "tsv", inputs.abundanceImportCfg, importOps)
+	propertyData := xsv.importFile(ptResult.getFile("properties.tsv"), "tsv", inputs.propertyImportCfg, importOps)
+
+	linkerData := {}
+	if !is_undefined(linkerParquet) {
+		linkerData = { linker: ptResult.getFrameDirect("linkerFrame").getFutureInputField("linker.data") }
+	}
+
+	return {
+		abundanceData: abundanceData,
+		propertyData: propertyData,
+		linkerData: linkerData,
+		stats: ptResult.getFileContent("stats.tsv")
+	}
+})

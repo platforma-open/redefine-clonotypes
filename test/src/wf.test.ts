@@ -36,12 +36,12 @@ async function setupUpstreamPipeline(
   const metaColumn1Id = uniquePlId();
   const dataset1Id = uniquePlId();
 
-  const r1Handle = await helpers.getLocalFileHandle("./assets/SRR11233652_sampledBulk_R1.fastq.gz");
-  const r2Handle = await helpers.getLocalFileHandle("./assets/SRR11233652_sampledBulk_R2.fastq.gz");
-  const s663R1 = await helpers.getLocalFileHandle("./assets/SRR11233663_sampledBulk_R1.fastq.gz");
-  const s663R2 = await helpers.getLocalFileHandle("./assets/SRR11233663_sampledBulk_R2.fastq.gz");
-  const s664R1 = await helpers.getLocalFileHandle("./assets/SRR11233664_sampledBulk_R1.fastq.gz");
-  const s664R2 = await helpers.getLocalFileHandle("./assets/SRR11233664_sampledBulk_R2.fastq.gz");
+  const r1Handle = await helpers.getLocalFileHandle("./assets/test1_R1.fastq.gz");
+  const r2Handle = await helpers.getLocalFileHandle("./assets/test1_R2.fastq.gz");
+  const s663R1 = await helpers.getLocalFileHandle("./assets/test2_R1.fastq.gz");
+  const s663R2 = await helpers.getLocalFileHandle("./assets/test2_R2.fastq.gz");
+  const s664R1 = await helpers.getLocalFileHandle("./assets/test3_R1.fastq.gz");
+  const s664R2 = await helpers.getLocalFileHandle("./assets/test3_R2.fastq.gz");
 
   await project.setBlockArgs(sndBlockId, {
     metadata: [
@@ -56,9 +56,9 @@ async function setupUpstreamPipeline(
     sampleIds: [sample1Id, sample2Id, sample3Id],
     sampleLabelColumnLabel: "Sample Name",
     sampleLabels: {
-      [sample1Id]: "SRR11233652",
-      [sample2Id]: "SRR11233663",
-      [sample3Id]: "SRR11233664",
+      [sample1Id]: "test1",
+      [sample2Id]: "test2",
+      [sample3Id]: "test3",
     },
     datasets: [
       {
